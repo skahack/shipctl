@@ -6,7 +6,7 @@ SRCS    := $(shell find . -type f -name '*.go')
 LDFLAGS := -ldflags="-s -w -X \"main.Version=$(VERSION)\" -X \"main.Revision=$(REVISION)\" -extldflags \"-static\""
 
 bin/$(NAME): $(SRCS)
-	go build -a -tags netgo -installsuffix netgo $(LDFLAGS) -o bin/$(NAME)
+	@go build -a -tags netgo -installsuffix netgo $(LDFLAGS) -o bin/$(NAME)
 
 dep:
 ifeq ($(shell command -v dep 2> /dev/null),)
