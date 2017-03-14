@@ -1,4 +1,74 @@
 {
-    "memo": "",
-    "projects": []
+    "memo": "e72eeaa56bbdf3b8047f2ac0f88f9217e81a92476fbacdca132f37829e0d8c70",
+    "projects": [
+        {
+            "name": "github.com/aws/aws-sdk-go",
+            "version": "v1.7.9",
+            "revision": "695fe24acaf9afe80b0ce261d4637f42ba0b4c7d",
+            "packages": [
+                "aws",
+                "aws/awserr",
+                "aws/awsutil",
+                "aws/client",
+                "aws/client/metadata",
+                "aws/corehandlers",
+                "aws/credentials",
+                "aws/credentials/ec2rolecreds",
+                "aws/credentials/endpointcreds",
+                "aws/credentials/stscreds",
+                "aws/defaults",
+                "aws/ec2metadata",
+                "aws/endpoints",
+                "aws/request",
+                "aws/session",
+                "aws/signer/v4",
+                "private/protocol",
+                "private/protocol/query",
+                "private/protocol/query/queryutil",
+                "private/protocol/rest",
+                "private/protocol/xml/xmlutil",
+                "service/sts"
+            ]
+        },
+        {
+            "name": "github.com/go-ini/ini",
+            "version": "v1.25.5",
+            "revision": "98c45284d68a05a0e0a576de574bd975946ef9ad",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/inconshreveable/mousetrap",
+            "branch": "master",
+            "revision": "76626ae9c91c4f2a10f34cad8ce83ea42c93bb75",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/jmespath/go-jmespath",
+            "version": "0.2.2",
+            "revision": "3433f3ea46d9f8019119e7dd41274e112a2359a9",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/spf13/cobra",
+            "branch": "master",
+            "revision": "16c014f1a19d865b765b420e74508f80eb831ada",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/spf13/pflag",
+            "branch": "master",
+            "revision": "9ff6c6923cfffbcd502984b8e0c80539a94968b7",
+            "packages": [
+                "."
+            ]
+        }
+    ]
 }
