@@ -12,12 +12,15 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ecs"
 	"github.com/spf13/cobra"
+
+	slack "github.com/monochromegane/slack-incoming-webhooks"
 )
 
 type deployCmd struct {
 	cluster     string
 	serviceName string
 	revision    int
+	slackNotify string
 }
 
 func NewDeployCommand(out, errOut io.Writer) *cobra.Command {
@@ -28,6 +31,11 @@ func NewDeployCommand(out, errOut io.Writer) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			err := f.execute(cmd, args, out)
 			if err != nil {
+				sendFailedMessage(
+					fmt.Sprintf("failed to deploy. cluster: %s, serviceName: %s\n", f.cluster, f.serviceName),
+					nil,
+					f.slackNotify,
+				)
 				return err
 			}
 			return nil
@@ -36,6 +44,7 @@ func NewDeployCommand(out, errOut io.Writer) *cobra.Command {
 	cmd.Flags().StringVar(&f.cluster, "cluster", "", "ECS Cluster Name")
 	cmd.Flags().StringVar(&f.serviceName, "service-name", "", "ECS Service Name")
 	cmd.Flags().IntVar(&f.revision, "revision", 0, "revision of ECS task definition")
+	cmd.Flags().StringVar(&f.slackNotify, "slack-notify", "", "slack webhook URL")
 
 	return cmd
 }
@@ -98,21 +107,33 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, out io.Writer) erro
 		return err
 	}
 
-	fmt.Fprintf(out, "task definition registerd successfully: revision %d -> %d\n", *taskDef.Revision, *newTaskDef.Revision)
+	sendMessage(
+		fmt.Sprintf("task definition registerd successfully: revision %d -> %d\n", *taskDef.Revision, *newTaskDef.Revision),
+		out,
+		f.slackNotify,
+	)
 
 	err = updateService(client, service, newTaskDef)
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprintf(out, "service updating\n")
+	sendMessage(
+		fmt.Sprintf("service updating\n"),
+		out,
+		f.slackNotify,
+	)
 
 	err = waitUpdateService(client, f.cluster, f.serviceName, out)
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprintf(out, "service updated successfully\n")
+	sendSuccessfulMessage(
+		fmt.Sprintf("service updated successfully\n"),
+		out,
+		f.slackNotify,
+	)
 
 	return nil
 }
@@ -217,4 +238,56 @@ func specifyRevision(revision int, arn string) (string, error) {
 	}
 
 	return re.ReplaceAllString(arn, fmt.Sprintf("${1}:%d", revision)), nil
+}
+
+func sendMessage(message string, out io.Writer, slackWebhookUrl string) {
+	if out != nil {
+		fmt.Fprintf(out, message)
+	}
+
+	if slackWebhookUrl != "" {
+		func() {
+			client := &slack.Client{WebhookURL: slackWebhookUrl}
+			payload := &slack.Payload{
+				Username: "deploy-bot",
+				Text:     message,
+			}
+			client.Post(payload)
+		}()
+	}
+}
+
+func sendSuccessfulMessage(message string, out io.Writer, slackWebhookUrl string) {
+	sendEndMessage(true, message, out, slackWebhookUrl)
+}
+
+func sendFailedMessage(message string, out io.Writer, slackWebhookUrl string) {
+	sendEndMessage(false, message, out, slackWebhookUrl)
+}
+
+func sendEndMessage(isSuccess bool, message string, out io.Writer, slackWebhookUrl string) {
+	if out != nil {
+		fmt.Fprintf(out, message)
+	}
+
+	if slackWebhookUrl != "" {
+		func() {
+			color := func() string {
+				if isSuccess {
+					return "good"
+				}
+				return "danger"
+			}()
+			client := &slack.Client{WebhookURL: slackWebhookUrl}
+			attachment := &slack.Attachment{
+				Color: color,
+				Text:  message,
+			}
+			payload := &slack.Payload{
+				Username:    "deploy-bot",
+				Attachments: []*slack.Attachment{attachment},
+			}
+			client.Post(payload)
+		}()
+	}
 }

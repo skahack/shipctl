@@ -1,5 +1,5 @@
 {
-    "memo": "cdc04438e4bdf950a6da78ef44191f4f82f6c1b03637ca023c2d775a8eb0898f",
+    "memo": "dd0152c74789679f82c8343cd4819ccbbcccf82834d50f6698ae88e3e46ac7f0",
     "projects": [
         {
             "name": "github.com/aws/aws-sdk-go",
@@ -54,6 +54,14 @@
             "name": "github.com/jmespath/go-jmespath",
             "version": "0.2.2",
             "revision": "3433f3ea46d9f8019119e7dd41274e112a2359a9",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/monochromegane/slack-incoming-webhooks",
+            "branch": "master",
+            "revision": "86d1b9ab9a9450c03e86cbe9ee2d0f1bb2de3bbf",
             "packages": [
                 "."
             ]
