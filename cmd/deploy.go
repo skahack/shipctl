@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"regexp"
 	"time"
 
@@ -48,13 +49,28 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, out io.Writer) erro
 		return errors.New("--service-name is required")
 	}
 
+	region := func() string {
+		if os.Getenv("AWS_REGION") != "" {
+			return os.Getenv("AWS_REGION")
+		}
+
+		if os.Getenv("AWS_DEFAULT_REGION") != "" {
+			return os.Getenv("AWS_DEFAULT_REGION")
+		}
+
+		return ""
+	}()
+	if region == "" {
+		return errors.New("AWS region is not found. please set a AWS_DEFAULT_REGION or AWS_REGION")
+	}
+
 	sess, err := session.NewSession()
 	if err != nil {
 		return err
 	}
 
 	client := ecs.New(sess, &aws.Config{
-		Region: aws.String("ap-northeast-1"),
+		Region: aws.String(region),
 	})
 
 	service, err := describeService(client, f.cluster, f.serviceName)
