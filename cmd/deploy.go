@@ -62,6 +62,10 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, out io.Writer) erro
 		return err
 	}
 
+	if len(service.Deployments) > 1 {
+		return errors.New(fmt.Sprintf("%s is currently deployed", f.serviceName))
+	}
+
 	taskDefArn := *service.TaskDefinition
 	taskDefArn, err = specifyRevision(f.revision, taskDefArn)
 	if err != nil {
