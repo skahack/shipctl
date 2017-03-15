@@ -32,6 +32,8 @@ func NewDeployCommand(out, errOut io.Writer) *cobra.Command {
 			err := f.execute(cmd, args, out)
 			if err != nil {
 				sendFailedMessage(
+					f.cluster,
+					f.serviceName,
 					fmt.Sprintf("failed to deploy. cluster: %s, serviceName: %s\n", f.cluster, f.serviceName),
 					nil,
 					f.slackNotify,
@@ -108,6 +110,8 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, out io.Writer) erro
 	}
 
 	sendMessage(
+		f.cluster,
+		f.serviceName,
 		fmt.Sprintf("task definition registerd successfully: revision %d -> %d\n", *taskDef.Revision, *newTaskDef.Revision),
 		out,
 		f.slackNotify,
@@ -119,6 +123,8 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, out io.Writer) erro
 	}
 
 	sendMessage(
+		f.cluster,
+		f.serviceName,
 		fmt.Sprintf("service updating\n"),
 		out,
 		f.slackNotify,
@@ -130,6 +136,8 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, out io.Writer) erro
 	}
 
 	sendSuccessfulMessage(
+		f.cluster,
+		f.serviceName,
 		fmt.Sprintf("service updated successfully\n"),
 		out,
 		f.slackNotify,
@@ -240,7 +248,7 @@ func specifyRevision(revision int, arn string) (string, error) {
 	return re.ReplaceAllString(arn, fmt.Sprintf("${1}:%d", revision)), nil
 }
 
-func sendMessage(message string, out io.Writer, slackWebhookUrl string) {
+func sendMessage(cluster, serviceName, message string, out io.Writer, slackWebhookUrl string) {
 	if out != nil {
 		fmt.Fprintf(out, message)
 	}
@@ -250,22 +258,22 @@ func sendMessage(message string, out io.Writer, slackWebhookUrl string) {
 			client := &slack.Client{WebhookURL: slackWebhookUrl}
 			payload := &slack.Payload{
 				Username: "deploy-bot",
-				Text:     message,
+				Text:     fmt.Sprintf("cluster: %s, serviceName: %s\n%s", cluster, serviceName, message),
 			}
 			client.Post(payload)
 		}()
 	}
 }
 
-func sendSuccessfulMessage(message string, out io.Writer, slackWebhookUrl string) {
-	sendEndMessage(true, message, out, slackWebhookUrl)
+func sendSuccessfulMessage(cluster, serviceName, message string, out io.Writer, slackWebhookUrl string) {
+	sendEndMessage(true, cluster, serviceName, message, out, slackWebhookUrl)
 }
 
-func sendFailedMessage(message string, out io.Writer, slackWebhookUrl string) {
-	sendEndMessage(false, message, out, slackWebhookUrl)
+func sendFailedMessage(cluster, serviceName, message string, out io.Writer, slackWebhookUrl string) {
+	sendEndMessage(false, cluster, serviceName, message, out, slackWebhookUrl)
 }
 
-func sendEndMessage(isSuccess bool, message string, out io.Writer, slackWebhookUrl string) {
+func sendEndMessage(isSuccess bool, cluster, serviceName, message string, out io.Writer, slackWebhookUrl string) {
 	if out != nil {
 		fmt.Fprintf(out, message)
 	}
@@ -281,7 +289,7 @@ func sendEndMessage(isSuccess bool, message string, out io.Writer, slackWebhookU
 			client := &slack.Client{WebhookURL: slackWebhookUrl}
 			attachment := &slack.Attachment{
 				Color: color,
-				Text:  message,
+				Text:  fmt.Sprintf("cluster: %s, serviceName: %s\n%s", cluster, serviceName, message),
 			}
 			payload := &slack.Payload{
 				Username:    "deploy-bot",
