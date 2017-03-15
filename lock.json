@@ -1,10 +1,10 @@
 {
-    "memo": "e72eeaa56bbdf3b8047f2ac0f88f9217e81a92476fbacdca132f37829e0d8c70",
+    "memo": "cdc04438e4bdf950a6da78ef44191f4f82f6c1b03637ca023c2d775a8eb0898f",
     "projects": [
         {
             "name": "github.com/aws/aws-sdk-go",
-            "version": "v1.7.9",
-            "revision": "695fe24acaf9afe80b0ce261d4637f42ba0b4c7d",
+            "version": "v1.7.3",
+            "revision": "6669bce73b4e3bc922ff5ea3a3983ede26e02b39",
             "packages": [
                 "aws",
                 "aws/awserr",
@@ -23,17 +23,21 @@
                 "aws/session",
                 "aws/signer/v4",
                 "private/protocol",
+                "private/protocol/json/jsonutil",
+                "private/protocol/jsonrpc",
                 "private/protocol/query",
                 "private/protocol/query/queryutil",
                 "private/protocol/rest",
                 "private/protocol/xml/xmlutil",
+                "private/waiter",
+                "service/ecs",
                 "service/sts"
             ]
         },
         {
             "name": "github.com/go-ini/ini",
-            "version": "v1.25.5",
-            "revision": "98c45284d68a05a0e0a576de574bd975946ef9ad",
+            "version": "v1.25.2",
+            "revision": "74bdc99692c3408cb103221e38675ce8fda0a718",
             "packages": [
                 "."
             ]
