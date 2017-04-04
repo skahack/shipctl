@@ -8,13 +8,8 @@ LDFLAGS := -ldflags="-s -w -X \"main.Version=$(VERSION)\" -X \"main.Revision=$(R
 bin/$(NAME): $(SRCS)
 	@go build -a -tags netgo -installsuffix netgo $(LDFLAGS) -o bin/$(NAME)
 
-dep:
-ifeq ($(shell command -v dep 2> /dev/null),)
-	go get -u github.com/golang/dep/...
-endif
-
-deps: dep
-	dep ensure
+deps:
+	glide install
 
 install:
 	go install $(LDFLAGS)
