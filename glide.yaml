@@ -8,3 +8,18 @@ import:
   - service/ecs
 - package: github.com/monochromegane/slack-incoming-webhooks
 - package: github.com/spf13/cobra
+- package: github.com/oklog/ulid
+  version: ^0.3.0
+- package: github.com/docker/distribution
+  version: ^2.6.1-rc.2
+  subpackages:
+  - reference
+- package: github.com/docker/engine-api
+  version: ^0.4.0
+  subpackages:
+  - client
+  - types
+- package: github.com/docker/docker
+  version: ^17.4.0-ce-rc2
+  subpackages:
+  - client
