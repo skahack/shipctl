@@ -1,8 +1,8 @@
-hash: a12a775871d2aa774aedc6b8e8d1297cb47c933393f4045b3e87385485ee906f
-updated: 2017-04-04T22:38:12.306494204+09:00
+hash: eff6a27f282eb3c0c1a32dbd070f339aefdd20103d9217849ab8666fb241c6ab
+updated: 2017-04-05T16:15:40.000132963+09:00
 imports:
 - name: github.com/aws/aws-sdk-go
-  version: 06d3a0c37ae95ae040548a13952501261cb5fd2b
+  version: 3a4119172097bf8725eb7c1b96b7957cfe2d92dc
   subpackages:
   - aws
   - aws/awserr
@@ -35,69 +35,18 @@ imports:
   subpackages:
   - digest
   - reference
-- name: github.com/docker/docker
-  version: 2f35d73b7dc7a9e234ea06f6145a26c37472c775
-  subpackages:
-  - client
-- name: github.com/docker/engine-api
-  version: 3d1601b9d2436a70b0dfc045a23f6503d19195df
-  subpackages:
-  - client
-  - client/transport
-  - client/transport/cancellable
-  - types
-  - types/blkiodev
-  - types/container
-  - types/filters
-  - types/network
-  - types/reference
-  - types/registry
-  - types/strslice
-  - types/swarm
-  - types/time
-  - types/versions
-- name: github.com/docker/go-connections
-  version: e15c02316c12de00874640cd76311849de2aeed5
-  subpackages:
-  - nat
-  - sockets
-  - tlsconfig
-- name: github.com/docker/go-units
-  version: 0dadbb0345b35ec7ef35e228dabb8de89a65bf52
 - name: github.com/go-ini/ini
   version: e7fea39b01aea8d5671f6858f0532f56e8bff3a5
 - name: github.com/inconshreveable/mousetrap
   version: 76626ae9c91c4f2a10f34cad8ce83ea42c93bb75
 - name: github.com/jmespath/go-jmespath
   version: bd40a432e4c76585ef6b72d3fd96fb9b6dc7b68d
-- name: github.com/Microsoft/go-winio
-  version: fff283ad5116362ca252298cfc9b95828956d85d
 - name: github.com/monochromegane/slack-incoming-webhooks
   version: 86d1b9ab9a9450c03e86cbe9ee2d0f1bb2de3bbf
 - name: github.com/oklog/ulid
   version: d311cb43c92434ec4072dfbbda3400741d0a6337
-- name: github.com/pkg/errors
-  version: 645ef00459ed84a119197bfb8d8205042c6df63d
-- name: github.com/Sirupsen/logrus
-  version: 55eb11d21d2a31a3cc93838241d04800f52e823d
-  subpackages:
-  - formatters/logstash
 - name: github.com/spf13/cobra
   version: 7aeaa2cce6ae7e18d2a6ee597b60ee137e999bd9
 - name: github.com/spf13/pflag
   version: d16db1e50e33dff1b6cdf37596cef36742128670
-- name: golang.org/x/net
-  version: 4876518f9e71663000c348837735820161a42df7
-  subpackages:
-  - context
-  - context/ctxhttp
-  - http2
-  - http2/hpack
-  - internal/timeseries
-  - proxy
-  - trace
-- name: golang.org/x/sys
-  version: 493114f68206f85e7e333beccfabc11e98cba8dd
-  subpackages:
-  - windows
 testImports: []

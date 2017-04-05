@@ -14,12 +14,3 @@ import:
   version: ^2.6.1-rc.2
   subpackages:
   - reference
-- package: github.com/docker/engine-api
-  version: ^0.4.0
-  subpackages:
-  - client
-  - types
-- package: github.com/docker/docker
-  version: ^17.4.0-ce-rc2
-  subpackages:
-  - client
