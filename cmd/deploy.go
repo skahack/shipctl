@@ -14,11 +14,10 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ecr"
 	"github.com/aws/aws-sdk-go/service/ecs"
+
 	"github.com/docker/distribution/reference"
 	"github.com/oklog/ulid"
 	"github.com/spf13/cobra"
-
-	slack "github.com/monochromegane/slack-incoming-webhooks"
 )
 
 type deployCmd struct {
@@ -26,6 +25,7 @@ type deployCmd struct {
 	serviceName string
 	revision    int
 	tag         string
+	backend     string
 	slackNotify string
 }
 
@@ -48,6 +48,7 @@ func NewDeployCommand(out, errOut io.Writer) *cobra.Command {
 	cmd.Flags().StringVar(&f.serviceName, "service-name", "", "ECS Service Name")
 	cmd.Flags().IntVar(&f.revision, "revision", 0, "revision of ECS task definition")
 	cmd.Flags().StringVar(&f.tag, "tag", "latest", "base tag of ECR image")
+	cmd.Flags().StringVar(&f.backend, "backend", "SSM", "Backend type of state manager")
 	cmd.Flags().StringVar(&f.slackNotify, "slack-notify", "", "slack webhook URL")
 
 	return cmd
@@ -62,17 +63,7 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 		return errors.New("--service-name is required")
 	}
 
-	region := func() string {
-		if os.Getenv("AWS_REGION") != "" {
-			return os.Getenv("AWS_REGION")
-		}
-
-		if os.Getenv("AWS_DEFAULT_REGION") != "" {
-			return os.Getenv("AWS_DEFAULT_REGION")
-		}
-
-		return ""
-	}()
+	region := getAWSRegion()
 	if region == "" {
 		return errors.New("AWS region is not found. please set a AWS_DEFAULT_REGION or AWS_REGION")
 	}
@@ -140,6 +131,15 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 		}
 	}
 
+	pusher, err := NewStatePusher(f.backend, f.cluster, f.serviceName)
+	if err != nil {
+		return err
+	}
+	err = pusher.PushPendingState(int(*taskDef.Revision), int(*registerdTaskDef.Revision))
+	if err != nil {
+		return err
+	}
+
 	l.log(fmt.Sprintf("task definition registerd successfully: revision %d -> %d\n", *taskDef.Revision, *registerdTaskDef.Revision))
 
 	err = updateService(client, service, registerdTaskDef)
@@ -150,6 +150,11 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 	l.log(fmt.Sprintf("service updating\n"))
 
 	err = waitUpdateService(client, f.cluster, f.serviceName, l)
+	if err != nil {
+		return err
+	}
+
+	err = pusher.UpdateState(int(*taskDef.Revision), int(*registerdTaskDef.Revision))
 	if err != nil {
 		return err
 	}
