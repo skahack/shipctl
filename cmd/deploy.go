@@ -48,7 +48,7 @@ func NewDeployCommand(out, errOut io.Writer) *cobra.Command {
 	cmd.Flags().StringVar(&f.serviceName, "service-name", "", "ECS Service Name")
 	cmd.Flags().IntVar(&f.revision, "revision", 0, "revision of ECS task definition")
 	cmd.Flags().StringVar(&f.tag, "tag", "latest", "base tag of ECR image")
-	cmd.Flags().StringVar(&f.backend, "backend", "SSM", "Backend type of state manager")
+	cmd.Flags().StringVar(&f.backend, "backend", "SSM", "Backend type of history manager")
 	cmd.Flags().StringVar(&f.slackNotify, "slack-notify", "", "slack webhook URL")
 
 	return cmd
@@ -135,7 +135,10 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 	if err != nil {
 		return err
 	}
-	err = pusher.PushPendingState(int(*taskDef.Revision), int(*registerdTaskDef.Revision))
+	err = pusher.PushState(
+		int(*registerdTaskDef.Revision),
+		fmt.Sprintf("deploy: %d -> %d", *taskDef.Revision, *registerdTaskDef.Revision),
+	)
 	if err != nil {
 		return err
 	}
@@ -154,7 +157,7 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 		return err
 	}
 
-	err = pusher.UpdateState(int(*taskDef.Revision), int(*registerdTaskDef.Revision))
+	err = pusher.UpdateState(int(*registerdTaskDef.Revision))
 	if err != nil {
 		return err
 	}

@@ -26,8 +26,8 @@ type deployState struct {
 }
 
 type statePusher interface {
-	PushPendingState(int, int) error
-	UpdateState(int, int) error
+	PushState(int, string) error
+	UpdateState(int) error
 	Pull() ([]*deployState, error)
 }
 
@@ -80,20 +80,15 @@ func (s *ssmStatePusher) Push(v string) error {
 	return nil
 }
 
-func (s *ssmStatePusher) PushPendingState(oldRevision, revision int) error {
+func (s *ssmStatePusher) PushState(revision int, cause string) error {
 	state, err := s.Pull()
 	if err != nil {
 		return err
 	}
-	for _, v := range state {
-		if v.Revision == revision {
-			return errors.New(fmt.Sprintf("validation error: revision %d is already exists", revision))
-		}
-	}
 	state = append(state, &deployState{
 		Revision: revision,
 		Status:   deployStatus_PENDING,
-		Cause:    fmt.Sprintf("deploy: %d -> %d", oldRevision, revision),
+		Cause:    cause,
 	})
 
 	from := 0
@@ -115,13 +110,13 @@ func (s *ssmStatePusher) PushPendingState(oldRevision, revision int) error {
 	return nil
 }
 
-func (s *ssmStatePusher) UpdateState(oldRevision, revision int) error {
+func (s *ssmStatePusher) UpdateState(revision int) error {
 	state, err := s.Pull()
 	if err != nil {
 		return err
 	}
 	for i, v := range state {
-		if v.Revision == revision {
+		if v.Revision == revision && v.Status == deployStatus_PENDING {
 			state[i].Status = deployStatus_DEPLOYED
 
 			b, err := json.Marshal(state)
