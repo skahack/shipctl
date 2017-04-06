@@ -8,23 +8,22 @@ LDFLAGS := -ldflags="-s -w -X \"main.Version=$(VERSION)\" -X \"main.Revision=$(R
 bin/$(NAME): $(SRCS)
 	@go build -a -tags netgo -installsuffix netgo $(LDFLAGS) -o bin/$(NAME)
 
-dep:
-ifeq ($(shell command -v dep 2> /dev/null),)
-	go get -u github.com/golang/dep/...
-endif
+.PHONY: deps
+deps:
+	glide install
 
-deps: dep
-	dep ensure
-
+.PHONY: install
 install:
 	go install $(LDFLAGS)
 
+.PHONY: clean
 clean:
 	rm -rf bin
 	rm -rf vendor/*
 	rm -rf dist
 
 DIST_DIRS := find ./ -type d -exec
+.PHONY: dist
 dist: bin/${NAME}
 	mkdir -p dist
 	cd bin && \
@@ -32,4 +31,6 @@ dist: bin/${NAME}
 	$(DIST_DIRS) zip -r ../dist/$(NAME)-$(VERSION).zip {} \; && \
 	cd ..
 
-.PHONY: deps clean install dist
+.PHONY: test
+test:
+	@go test $$(go list ./... | grep -v '/vendor/') -cover

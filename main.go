@@ -27,6 +27,7 @@ var rootCmd = &cobra.Command{
 func main() {
 	rootCmd.AddCommand(
 		cmd.NewDeployCommand(os.Stdout, os.Stderr),
+		cmd.NewRollbackCommand(os.Stdout, os.Stderr),
 	)
 
 	if err := rootCmd.Execute(); err != nil {

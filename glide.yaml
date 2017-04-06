@@ -1,0 +1,16 @@
+package: github.com/SKAhack/ship
+import:
+- package: github.com/aws/aws-sdk-go
+  version: ^1.8.7
+  subpackages:
+  - aws
+  - aws/session
+  - service/ecs
+- package: github.com/monochromegane/slack-incoming-webhooks
+- package: github.com/spf13/cobra
+- package: github.com/oklog/ulid
+  version: ^0.3.0
+- package: github.com/docker/distribution
+  version: ^2.6.1-rc.2
+  subpackages:
+  - reference

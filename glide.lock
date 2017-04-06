@@ -1,0 +1,52 @@
+hash: eff6a27f282eb3c0c1a32dbd070f339aefdd20103d9217849ab8666fb241c6ab
+updated: 2017-04-05T16:15:40.000132963+09:00
+imports:
+- name: github.com/aws/aws-sdk-go
+  version: 3a4119172097bf8725eb7c1b96b7957cfe2d92dc
+  subpackages:
+  - aws
+  - aws/awserr
+  - aws/awsutil
+  - aws/client
+  - aws/client/metadata
+  - aws/corehandlers
+  - aws/credentials
+  - aws/credentials/ec2rolecreds
+  - aws/credentials/endpointcreds
+  - aws/credentials/stscreds
+  - aws/defaults
+  - aws/ec2metadata
+  - aws/endpoints
+  - aws/request
+  - aws/session
+  - aws/signer/v4
+  - private/protocol
+  - private/protocol/json/jsonutil
+  - private/protocol/jsonrpc
+  - private/protocol/query
+  - private/protocol/query/queryutil
+  - private/protocol/rest
+  - private/protocol/xml/xmlutil
+  - service/ecr
+  - service/ecs
+  - service/sts
+- name: github.com/docker/distribution
+  version: 0d39820aa79e678113b010bae558345fda98db53
+  subpackages:
+  - digest
+  - reference
+- name: github.com/go-ini/ini
+  version: e7fea39b01aea8d5671f6858f0532f56e8bff3a5
+- name: github.com/inconshreveable/mousetrap
+  version: 76626ae9c91c4f2a10f34cad8ce83ea42c93bb75
+- name: github.com/jmespath/go-jmespath
+  version: bd40a432e4c76585ef6b72d3fd96fb9b6dc7b68d
+- name: github.com/monochromegane/slack-incoming-webhooks
+  version: 86d1b9ab9a9450c03e86cbe9ee2d0f1bb2de3bbf
+- name: github.com/oklog/ulid
+  version: d311cb43c92434ec4072dfbbda3400741d0a6337
+- name: github.com/spf13/cobra
+  version: 7aeaa2cce6ae7e18d2a6ee597b60ee137e999bd9
+- name: github.com/spf13/pflag
+  version: d16db1e50e33dff1b6cdf37596cef36742128670
+testImports: []

@@ -4,22 +4,28 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/ecr"
 	"github.com/aws/aws-sdk-go/service/ecs"
-	"github.com/spf13/cobra"
 
-	slack "github.com/monochromegane/slack-incoming-webhooks"
+	"github.com/docker/distribution/reference"
+	"github.com/oklog/ulid"
+	"github.com/spf13/cobra"
 )
 
 type deployCmd struct {
 	cluster     string
 	serviceName string
 	revision    int
+	tag         string
+	backend     string
 	slackNotify string
 }
 
@@ -29,15 +35,10 @@ func NewDeployCommand(out, errOut io.Writer) *cobra.Command {
 		Use:   "deploy [options]",
 		Short: "",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			err := f.execute(cmd, args, out)
+			log := NewLogger(f.cluster, f.serviceName, f.slackNotify, out)
+			err := f.execute(cmd, args, log)
 			if err != nil {
-				sendFailedMessage(
-					f.cluster,
-					f.serviceName,
-					fmt.Sprintf("failed to deploy. cluster: %s, serviceName: %s\n", f.cluster, f.serviceName),
-					nil,
-					f.slackNotify,
-				)
+				log.fail(fmt.Sprintf("failed to deploy. cluster: %s, serviceName: %s\n", f.cluster, f.serviceName))
 				return err
 			}
 			return nil
@@ -46,12 +47,14 @@ func NewDeployCommand(out, errOut io.Writer) *cobra.Command {
 	cmd.Flags().StringVar(&f.cluster, "cluster", "", "ECS Cluster Name")
 	cmd.Flags().StringVar(&f.serviceName, "service-name", "", "ECS Service Name")
 	cmd.Flags().IntVar(&f.revision, "revision", 0, "revision of ECS task definition")
+	cmd.Flags().StringVar(&f.tag, "tag", "latest", "base tag of ECR image")
+	cmd.Flags().StringVar(&f.backend, "backend", "SSM", "Backend type of history manager")
 	cmd.Flags().StringVar(&f.slackNotify, "slack-notify", "", "slack webhook URL")
 
 	return cmd
 }
 
-func (f *deployCmd) execute(_ *cobra.Command, args []string, out io.Writer) error {
+func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 	if f.cluster == "" {
 		return errors.New("--cluster is required")
 	}
@@ -60,17 +63,7 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, out io.Writer) erro
 		return errors.New("--service-name is required")
 	}
 
-	region := func() string {
-		if os.Getenv("AWS_REGION") != "" {
-			return os.Getenv("AWS_REGION")
-		}
-
-		if os.Getenv("AWS_DEFAULT_REGION") != "" {
-			return os.Getenv("AWS_DEFAULT_REGION")
-		}
-
-		return ""
-	}()
+	region := getAWSRegion()
 	if region == "" {
 		return errors.New("AWS region is not found. please set a AWS_DEFAULT_REGION or AWS_REGION")
 	}
@@ -84,6 +77,10 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, out io.Writer) erro
 		Region: aws.String(region),
 	})
 
+	ecrClient := ecr.New(sess, &aws.Config{
+		Region: aws.String(region),
+	})
+
 	service, err := describeService(client, f.cluster, f.serviceName)
 	if err != nil {
 		return err
@@ -93,55 +90,79 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, out io.Writer) erro
 		return errors.New(fmt.Sprintf("%s is currently deployed", f.serviceName))
 	}
 
-	taskDefArn := *service.TaskDefinition
-	taskDefArn, err = specifyRevision(f.revision, taskDefArn)
+	var uniqueID string
+	{
+		entropy := rand.New(rand.NewSource(time.Now().UnixNano()))
+		uniqueID = ulid.MustNew(ulid.Now(), entropy).String()
+	}
+
+	var taskDef *ecs.TaskDefinition
+	var registerdTaskDef *ecs.TaskDefinition
+	{
+		taskDefArn := *service.TaskDefinition
+		taskDefArn, err = specifyRevision(f.revision, taskDefArn)
+		if err != nil {
+			return err
+		}
+
+		taskDef, err = describeTaskDefinition(client, taskDefArn)
+		if err != nil {
+			return err
+		}
+
+		newTaskDef, err := createNewTaskDefinition(uniqueID, taskDef)
+		if err != nil {
+			return err
+		}
+
+		img, err := parseDockerImage(*taskDef.ContainerDefinitions[0].Image)
+		if err != nil {
+			return err
+		}
+
+		err = tagDockerImage(ecrClient, img.RepositoryName, f.tag, uniqueID)
+		if err != nil {
+			return err
+		}
+
+		registerdTaskDef, err = registerTaskDefinition(client, newTaskDef)
+		if err != nil {
+			return err
+		}
+	}
+
+	pusher, err := NewStatePusher(f.backend, f.cluster, f.serviceName)
 	if err != nil {
 		return err
 	}
-
-	taskDef, err := describeTaskDefinition(client, taskDefArn)
-	if err != nil {
-		return err
-	}
-
-	newTaskDef, err := registerTaskDefinition(client, taskDef)
-	if err != nil {
-		return err
-	}
-
-	sendMessage(
-		f.cluster,
-		f.serviceName,
-		fmt.Sprintf("task definition registerd successfully: revision %d -> %d\n", *taskDef.Revision, *newTaskDef.Revision),
-		out,
-		f.slackNotify,
+	err = pusher.PushState(
+		int(*registerdTaskDef.Revision),
+		fmt.Sprintf("deploy: %d -> %d", *taskDef.Revision, *registerdTaskDef.Revision),
 	)
-
-	err = updateService(client, service, newTaskDef)
 	if err != nil {
 		return err
 	}
 
-	sendMessage(
-		f.cluster,
-		f.serviceName,
-		fmt.Sprintf("service updating\n"),
-		out,
-		f.slackNotify,
-	)
+	l.log(fmt.Sprintf("task definition registerd successfully: revision %d -> %d\n", *taskDef.Revision, *registerdTaskDef.Revision))
 
-	err = waitUpdateService(client, f.cluster, f.serviceName, out)
+	err = updateService(client, service, registerdTaskDef)
 	if err != nil {
 		return err
 	}
 
-	sendSuccessfulMessage(
-		f.cluster,
-		f.serviceName,
-		fmt.Sprintf("service updated successfully\n"),
-		out,
-		f.slackNotify,
-	)
+	l.log(fmt.Sprintf("service updating\n"))
+
+	err = waitUpdateService(client, f.cluster, f.serviceName, l)
+	if err != nil {
+		return err
+	}
+
+	err = pusher.UpdateState(int(*registerdTaskDef.Revision))
+	if err != nil {
+		return err
+	}
+
+	l.success(fmt.Sprintf("service updated successfully\n"))
 
 	return nil
 }
@@ -175,6 +196,47 @@ func describeTaskDefinition(client *ecs.ECS, arn string) (*ecs.TaskDefinition, e
 	}
 
 	return res.TaskDefinition, nil
+}
+
+func createNewTaskDefinition(id string, taskDef *ecs.TaskDefinition) (*ecs.TaskDefinition, error) {
+	if len(taskDef.ContainerDefinitions) > 1 {
+		return nil, errors.New("multiple container is not supported")
+	}
+
+	newTaskDef := *taskDef // shallow copy
+	var containers []*ecs.ContainerDefinition
+	for _, vp := range taskDef.ContainerDefinitions {
+		v := *vp // shallow copy
+		img, err := parseDockerImage(*v.Image)
+		if err != nil {
+			return nil, err
+		}
+
+		v.Image = aws.String(fmt.Sprintf("%s:%s", img.Name, id))
+		containers = append(containers, &v)
+	}
+	newTaskDef.ContainerDefinitions = containers
+
+	return &newTaskDef, nil
+}
+
+type dockerImage struct {
+	Name           string
+	Tag            string
+	RepositoryName string
+}
+
+func parseDockerImage(image string) (*dockerImage, error) {
+	ref, err := reference.Parse(image)
+	if err != nil {
+		return nil, err
+	}
+	components := strings.Split(ref.(reference.Named).Name(), "/")
+	return &dockerImage{
+		Name:           ref.(reference.Named).Name(),
+		Tag:            ref.(reference.Tagged).Tag(),
+		RepositoryName: components[len(components)-1],
+	}, nil
 }
 
 func registerTaskDefinition(client *ecs.ECS, taskDef *ecs.TaskDefinition) (*ecs.TaskDefinition, error) {
@@ -212,7 +274,8 @@ func updateService(client *ecs.ECS, service *ecs.Service, taskDef *ecs.TaskDefin
 	return nil
 }
 
-func waitUpdateService(client *ecs.ECS, cluster, serviceName string, out io.Writer) error {
+func waitUpdateService(client *ecs.ECS, cluster, serviceName string, l *logger) error {
+	start := time.Now()
 	t := time.NewTicker(10 * time.Second)
 	for {
 		select {
@@ -222,11 +285,8 @@ func waitUpdateService(client *ecs.ECS, cluster, serviceName string, out io.Writ
 				return err
 			}
 
-			for _, v := range s.Deployments {
-				fmt.Fprintf(out,
-					"status: %s | desired: %d, pending: %d, running: %d\n",
-					*v.Status, *v.DesiredCount, *v.PendingCount, *v.RunningCount)
-			}
+			elapsed := time.Now().Sub(start)
+			l.log(fmt.Sprintf("still service updating... [%s]\n", (elapsed/time.Second)*time.Second))
 
 			if len(s.Deployments) == 1 && *s.RunningCount == *s.DesiredCount {
 				return nil
@@ -248,54 +308,43 @@ func specifyRevision(revision int, arn string) (string, error) {
 	return re.ReplaceAllString(arn, fmt.Sprintf("${1}:%d", revision)), nil
 }
 
-func sendMessage(cluster, serviceName, message string, out io.Writer, slackWebhookUrl string) {
-	if out != nil {
-		fmt.Fprintf(out, message)
+func tagDockerImage(ecrClient *ecr.ECR, repoName string, fromTag string, toTag string) error {
+	params := &ecr.BatchGetImageInput{
+		ImageIds:       []*ecr.ImageIdentifier{{ImageTag: aws.String(fromTag)}},
+		RepositoryName: aws.String(repoName),
+
+		AcceptedMediaTypes: []*string{
+			aws.String("application/vnd.docker.distribution.manifest.v1+json"),
+			aws.String("application/vnd.docker.distribution.manifest.v2+json"),
+			aws.String("application/vnd.oci.image.manifest.v1+json"),
+		},
+	}
+	img, err := ecrClient.BatchGetImage(params)
+	if err != nil {
+		return err
 	}
 
-	if slackWebhookUrl != "" {
-		func() {
-			client := &slack.Client{WebhookURL: slackWebhookUrl}
-			payload := &slack.Payload{
-				Username: "deploy-bot",
-				Text:     fmt.Sprintf("cluster: %s, serviceName: %s\n%s", cluster, serviceName, message),
-			}
-			client.Post(payload)
-		}()
+	putParams := &ecr.PutImageInput{
+		ImageManifest:  img.Images[0].ImageManifest,
+		RepositoryName: aws.String(repoName),
+		ImageTag:       aws.String(toTag),
 	}
+	_, err = ecrClient.PutImage(putParams)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func sendSuccessfulMessage(cluster, serviceName, message string, out io.Writer, slackWebhookUrl string) {
-	sendEndMessage(true, cluster, serviceName, message, out, slackWebhookUrl)
-}
-
-func sendFailedMessage(cluster, serviceName, message string, out io.Writer, slackWebhookUrl string) {
-	sendEndMessage(false, cluster, serviceName, message, out, slackWebhookUrl)
-}
-
-func sendEndMessage(isSuccess bool, cluster, serviceName, message string, out io.Writer, slackWebhookUrl string) {
-	if out != nil {
-		fmt.Fprintf(out, message)
+func getAWSRegion() string {
+	if os.Getenv("AWS_REGION") != "" {
+		return os.Getenv("AWS_REGION")
 	}
 
-	if slackWebhookUrl != "" {
-		func() {
-			color := func() string {
-				if isSuccess {
-					return "good"
-				}
-				return "danger"
-			}()
-			client := &slack.Client{WebhookURL: slackWebhookUrl}
-			attachment := &slack.Attachment{
-				Color: color,
-				Text:  fmt.Sprintf("cluster: %s, serviceName: %s\n%s", cluster, serviceName, message),
-			}
-			payload := &slack.Payload{
-				Username:    "deploy-bot",
-				Attachments: []*slack.Attachment{attachment},
-			}
-			client.Post(payload)
-		}()
+	if os.Getenv("AWS_DEFAULT_REGION") != "" {
+		return os.Getenv("AWS_DEFAULT_REGION")
 	}
+
+	return ""
 }
