@@ -7,7 +7,6 @@ import (
 	"math/rand"
 	"os"
 	"regexp"
-	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -20,11 +19,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var ECRRegex *regexp.Regexp = func() *regexp.Regexp {
+	regex, _ := regexp.Compile(`^[0-9]+\.dkr\.ecr\.(us|ca|eu|ap|sa)-(east|west|central|northeast|southeast|south)-[12]\.amazonaws\.com$`)
+	return regex
+}()
+
 type deployCmd struct {
 	cluster     string
 	serviceName string
 	revision    int
-	tag         string
+	images      imageOptions
 	backend     string
 	slackNotify string
 }
@@ -47,7 +51,7 @@ func NewDeployCommand(out, errOut io.Writer) *cobra.Command {
 	cmd.Flags().StringVar(&f.cluster, "cluster", "", "ECS Cluster Name")
 	cmd.Flags().StringVar(&f.serviceName, "service-name", "", "ECS Service Name")
 	cmd.Flags().IntVar(&f.revision, "revision", 0, "revision of ECS task definition")
-	cmd.Flags().StringVar(&f.tag, "tag", "latest", "base tag of ECR image")
+	cmd.Flags().Var(&f.images, "image", "base image of ECR image")
 	cmd.Flags().StringVar(&f.backend, "backend", "SSM", "Backend type of history manager")
 	cmd.Flags().StringVar(&f.slackNotify, "slack-notify", "", "slack webhook URL")
 
@@ -115,14 +119,21 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 			return err
 		}
 
-		img, err := parseDockerImage(*taskDef.ContainerDefinitions[0].Image)
-		if err != nil {
-			return err
-		}
+		for _, v := range taskDef.ContainerDefinitions {
+			img, err := parseDockerImage(*v.Image)
+			if err != nil {
+				return err
+			}
 
-		err = tagDockerImage(ecrClient, img.RepositoryName, f.tag, uniqueID)
-		if err != nil {
-			return err
+			opt := f.images.Get(img.RepositoryName)
+			if opt == nil {
+				return errors.New(fmt.Sprintf("can not found a image option %s", img.RepositoryName))
+			}
+
+			err = tagDockerImage(ecrClient, img.RepositoryName, opt.Tag, uniqueID)
+			if err != nil {
+				return err
+			}
 		}
 
 		registerdTaskDef, err = registerTaskDefinition(client, newTaskDef)
@@ -199,10 +210,6 @@ func describeTaskDefinition(client *ecs.ECS, arn string) (*ecs.TaskDefinition, e
 }
 
 func createNewTaskDefinition(id string, taskDef *ecs.TaskDefinition) (*ecs.TaskDefinition, error) {
-	if len(taskDef.ContainerDefinitions) > 1 {
-		return nil, errors.New("multiple container is not supported")
-	}
-
 	newTaskDef := *taskDef // shallow copy
 	var containers []*ecs.ContainerDefinition
 	for _, vp := range taskDef.ContainerDefinitions {
@@ -212,8 +219,10 @@ func createNewTaskDefinition(id string, taskDef *ecs.TaskDefinition) (*ecs.TaskD
 			return nil, err
 		}
 
-		v.Image = aws.String(fmt.Sprintf("%s:%s", img.Name, id))
-		containers = append(containers, &v)
+		if isECRHosted(img) {
+			v.Image = aws.String(fmt.Sprintf("%s:%s", img.Name, id))
+			containers = append(containers, &v)
+		}
 	}
 	newTaskDef.ContainerDefinitions = containers
 
@@ -224,6 +233,7 @@ type dockerImage struct {
 	Name           string
 	Tag            string
 	RepositoryName string
+	HostName       string
 }
 
 func parseDockerImage(image string) (*dockerImage, error) {
@@ -231,12 +241,18 @@ func parseDockerImage(image string) (*dockerImage, error) {
 	if err != nil {
 		return nil, err
 	}
-	components := strings.Split(ref.(reference.Named).Name(), "/")
+
+	hostName, repoName := reference.SplitHostname(ref.(reference.Named))
 	return &dockerImage{
 		Name:           ref.(reference.Named).Name(),
 		Tag:            ref.(reference.Tagged).Tag(),
-		RepositoryName: components[len(components)-1],
+		RepositoryName: repoName,
+		HostName:       hostName,
 	}, nil
+}
+
+func isECRHosted(image *dockerImage) bool {
+	return ECRRegex.MatchString(image.HostName)
 }
 
 func registerTaskDefinition(client *ecs.ECS, taskDef *ecs.TaskDefinition) (*ecs.TaskDefinition, error) {
@@ -347,4 +363,51 @@ func getAWSRegion() string {
 	}
 
 	return ""
+}
+
+//
+// imageOptions
+//
+
+type imageOption struct {
+	RepositoryName string
+	Tag            string
+}
+
+type imageOptions struct {
+	Value []*imageOption
+}
+
+func (t *imageOptions) String() string {
+	return fmt.Sprintf("String: %v", t.Value)
+}
+
+func (t *imageOptions) Set(v string) error {
+	r, _ := regexp.Compile(`^([a-z0-9]+(?:(?:[._]|__|[-]*)[a-z0-9]+)*):([\w][\w.-]{0,127})$`)
+	matches := r.FindStringSubmatch(v)
+	if len(matches) == 0 {
+		return errors.New(fmt.Sprintf("invalid format %s", v))
+	}
+
+	opt := &imageOption{
+		RepositoryName: matches[1],
+		Tag:            matches[2],
+	}
+
+	t.Value = append(t.Value, opt)
+
+	return nil
+}
+
+func (t *imageOptions) Type() string {
+	return "image"
+}
+
+func (t *imageOptions) Get(repoName string) *imageOption {
+	for _, v := range t.Value {
+		if v.RepositoryName == repoName {
+			return v
+		}
+	}
+	return nil
 }
