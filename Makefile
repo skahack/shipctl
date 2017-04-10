@@ -34,3 +34,7 @@ dist: bin/${NAME}
 .PHONY: test
 test:
 	@go test $$(go list ./... | grep -v '/vendor/') -cover
+
+.PHONY: linux-bin
+linux-bin:
+	docker run -it --rm -v$(CURDIR)/bin:/data $(NAME) cp /go/src/github.com/SKAhack/$(NAME)/bin/$(NAME) /data
