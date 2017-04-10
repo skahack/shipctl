@@ -19,9 +19,8 @@ const (
 )
 
 var rootCmd = &cobra.Command{
-	Use:        cliName,
-	Short:      cliDescription,
-	SuggestFor: []string{"shipctl"},
+	Use:   cliName,
+	Short: cliDescription,
 }
 
 func main() {
