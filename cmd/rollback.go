@@ -76,11 +76,9 @@ func (f *rollbackCmd) execute(_ *cobra.Command, args []string, l *logger) error 
 	if len(states) < 2 {
 		return errors.New("can not found a prev state")
 	}
+
 	prevState := states[len(states)-2]
 	state := states[len(states)-1]
-	if state.Status != deployStatus_DEPLOYED {
-		return errors.New("found pending deploy")
-	}
 
 	service, err := describeService(client, f.cluster, f.serviceName)
 	if err != nil {
@@ -88,7 +86,7 @@ func (f *rollbackCmd) execute(_ *cobra.Command, args []string, l *logger) error 
 	}
 
 	if len(service.Deployments) > 1 {
-		return errors.New(fmt.Sprintf("%s is currently deployed", f.serviceName))
+		return errors.New(fmt.Sprintf("%s is currently deploying", f.serviceName))
 	}
 
 	var taskDef *ecs.TaskDefinition
@@ -107,14 +105,6 @@ func (f *rollbackCmd) execute(_ *cobra.Command, args []string, l *logger) error 
 
 	l.log(fmt.Sprintf("rollback: revision %d -> %d\n", state.Revision, prevState.Revision))
 
-	err = historyManager.PushState(
-		prevState.Revision,
-		fmt.Sprintf("rollback: %d -> %d", state.Revision, prevState.Revision),
-	)
-	if err != nil {
-		return err
-	}
-
 	err = updateService(client, service, taskDef)
 	if err != nil {
 		return err
@@ -127,7 +117,10 @@ func (f *rollbackCmd) execute(_ *cobra.Command, args []string, l *logger) error 
 		return err
 	}
 
-	err = historyManager.UpdateState(prevState.Revision)
+	err = historyManager.PushState(
+		prevState.Revision,
+		fmt.Sprintf("rollback: %d -> %d", state.Revision, prevState.Revision),
+	)
 	if err != nil {
 		return err
 	}

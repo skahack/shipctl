@@ -89,13 +89,18 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 		Region: aws.String(region),
 	})
 
+	historyManager, err := NewHistoryManager(f.backend, f.cluster, f.serviceName)
+	if err != nil {
+		return err
+	}
+
 	service, err := describeService(client, f.cluster, f.serviceName)
 	if err != nil {
 		return err
 	}
 
 	if len(service.Deployments) > 1 {
-		return errors.New(fmt.Sprintf("%s is currently deployed", f.serviceName))
+		return errors.New(fmt.Sprintf("%s is currently deploying", f.serviceName))
 	}
 
 	var uniqueID string
@@ -146,18 +151,6 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 		}
 	}
 
-	historyManager, err := NewHistoryManager(f.backend, f.cluster, f.serviceName)
-	if err != nil {
-		return err
-	}
-	err = historyManager.PushState(
-		int(*registerdTaskDef.Revision),
-		fmt.Sprintf("deploy: %d -> %d", *taskDef.Revision, *registerdTaskDef.Revision),
-	)
-	if err != nil {
-		return err
-	}
-
 	l.log(fmt.Sprintf("task definition registerd successfully: revision %d -> %d\n", *taskDef.Revision, *registerdTaskDef.Revision))
 
 	err = updateService(client, service, registerdTaskDef)
@@ -172,7 +165,10 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 		return err
 	}
 
-	err = historyManager.UpdateState(int(*registerdTaskDef.Revision))
+	err = historyManager.PushState(
+		int(*registerdTaskDef.Revision),
+		fmt.Sprintf("deploy: %d -> %d", *taskDef.Revision, *registerdTaskDef.Revision),
+	)
 	if err != nil {
 		return err
 	}

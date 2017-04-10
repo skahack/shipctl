@@ -17,7 +17,6 @@ type deployStatus int
 
 const (
 	deployStatus_UNKNOWN deployStatus = iota
-	deployStatus_PENDING
 	deployStatus_DEPLOYED
 )
 
@@ -29,7 +28,6 @@ type deployState struct {
 
 type historyManager interface {
 	PushState(int, string) error
-	UpdateState(int) error
 	Pull() ([]*deployState, error)
 }
 
@@ -91,7 +89,7 @@ func (s *ssmHistoryManager) PushState(revision int, cause string) error {
 	}
 	state = append(state, &deployState{
 		Revision: revision,
-		Status:   deployStatus_PENDING,
+		Status:   deployStatus_DEPLOYED,
 		Cause:    cause,
 	})
 
@@ -112,32 +110,6 @@ func (s *ssmHistoryManager) PushState(revision int, cause string) error {
 	}
 
 	return nil
-}
-
-func (s *ssmHistoryManager) UpdateState(revision int) error {
-	state, err := s.Pull()
-	if err != nil {
-		return err
-	}
-	for i, v := range state {
-		if v.Revision == revision && v.Status == deployStatus_PENDING {
-			state[i].Status = deployStatus_DEPLOYED
-
-			b, err := json.Marshal(state)
-			if err != nil {
-				return err
-			}
-
-			err = s.Push(string(b))
-			if err != nil {
-				return err
-			}
-
-			return nil
-		}
-	}
-
-	return errors.New("can not found a current state")
 }
 
 func (s *ssmHistoryManager) Pull() ([]*deployState, error) {
