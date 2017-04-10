@@ -12,10 +12,10 @@ import (
 )
 
 type rollbackCmd struct {
-	cluster     string
-	serviceName string
-	backend     string
-	slackNotify string
+	cluster         string
+	serviceName     string
+	backend         string
+	slackWebhookUrl string
 }
 
 func NewRollbackCommand(out, errOut io.Writer) *cobra.Command {
@@ -24,7 +24,7 @@ func NewRollbackCommand(out, errOut io.Writer) *cobra.Command {
 		Use:   "rollback [options]",
 		Short: "",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			log := NewLogger(f.cluster, f.serviceName, f.slackNotify, out)
+			log := NewLogger(f.cluster, f.serviceName, f.slackWebhookUrl, out)
 			err := f.execute(cmd, args, log)
 			if err != nil {
 				log.fail(fmt.Sprintf("failed to deploy. cluster: %s, serviceName: %s\n", f.cluster, f.serviceName))
@@ -36,7 +36,7 @@ func NewRollbackCommand(out, errOut io.Writer) *cobra.Command {
 	cmd.Flags().StringVar(&f.cluster, "cluster", "", "ECS Cluster Name")
 	cmd.Flags().StringVar(&f.serviceName, "service-name", "", "ECS Service Name")
 	cmd.Flags().StringVar(&f.backend, "backend", "SSM", "Backend type of state manager")
-	cmd.Flags().StringVar(&f.slackNotify, "slack-notify", "", "slack webhook URL")
+	cmd.Flags().StringVar(&f.slackWebhookUrl, "slack-webhook-url", "", "slack webhook URL")
 
 	return cmd
 }

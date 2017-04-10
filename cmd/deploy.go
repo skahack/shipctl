@@ -25,12 +25,12 @@ var ECRRegex *regexp.Regexp = func() *regexp.Regexp {
 }()
 
 type deployCmd struct {
-	cluster     string
-	serviceName string
-	revision    int
-	images      imageOptions
-	backend     string
-	slackNotify string
+	cluster         string
+	serviceName     string
+	revision        int
+	images          imageOptions
+	backend         string
+	slackWebhookUrl string
 }
 
 func NewDeployCommand(out, errOut io.Writer) *cobra.Command {
@@ -39,7 +39,7 @@ func NewDeployCommand(out, errOut io.Writer) *cobra.Command {
 		Use:   "deploy [options]",
 		Short: "",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			log := NewLogger(f.cluster, f.serviceName, f.slackNotify, out)
+			log := NewLogger(f.cluster, f.serviceName, f.slackWebhookUrl, out)
 			err := f.execute(cmd, args, log)
 			if err != nil {
 				log.fail(fmt.Sprintf("failed to deploy. cluster: %s, serviceName: %s\n", f.cluster, f.serviceName))
@@ -53,7 +53,7 @@ func NewDeployCommand(out, errOut io.Writer) *cobra.Command {
 	cmd.Flags().IntVar(&f.revision, "revision", 0, "revision of ECS task definition")
 	cmd.Flags().Var(&f.images, "image", "base image of ECR image")
 	cmd.Flags().StringVar(&f.backend, "backend", "SSM", "Backend type of history manager")
-	cmd.Flags().StringVar(&f.slackNotify, "slack-notify", "", "slack webhook URL")
+	cmd.Flags().StringVar(&f.slackWebhookUrl, "slack-webhook-url", "", "slack webhook URL")
 
 	return cmd
 }
