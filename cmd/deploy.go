@@ -146,11 +146,11 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 		}
 	}
 
-	pusher, err := NewStatePusher(f.backend, f.cluster, f.serviceName)
+	historyManager, err := NewHistoryManager(f.backend, f.cluster, f.serviceName)
 	if err != nil {
 		return err
 	}
-	err = pusher.PushState(
+	err = historyManager.PushState(
 		int(*registerdTaskDef.Revision),
 		fmt.Sprintf("deploy: %d -> %d", *taskDef.Revision, *registerdTaskDef.Revision),
 	)
@@ -172,7 +172,7 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 		return err
 	}
 
-	err = pusher.UpdateState(int(*registerdTaskDef.Revision))
+	err = historyManager.UpdateState(int(*registerdTaskDef.Revision))
 	if err != nil {
 		return err
 	}

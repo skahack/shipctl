@@ -27,27 +27,27 @@ type deployState struct {
 	Cause    string       `json:"cause"`
 }
 
-type statePusher interface {
+type historyManager interface {
 	PushState(int, string) error
 	UpdateState(int) error
 	Pull() ([]*deployState, error)
 }
 
-func NewStatePusher(backend, clusterName, serviceName string) (statePusher, error) {
+func NewHistoryManager(backend, clusterName, serviceName string) (historyManager, error) {
 	if backend == "SSM" {
-		return NewSSMStatePusher(clusterName, serviceName)
+		return NewSSMHistoryManager(clusterName, serviceName)
 	}
-	return NewSSMStatePusher(clusterName, serviceName)
+	return NewSSMHistoryManager(clusterName, serviceName)
 }
 
-type ssmStatePusher struct {
+type ssmHistoryManager struct {
 	Client       *ssm.SSM
 	ClusterName  string
 	ServiceName  string
 	HistoryLimit int
 }
 
-func NewSSMStatePusher(clusterName, serviceName string) (*ssmStatePusher, error) {
+func NewSSMHistoryManager(clusterName, serviceName string) (*ssmHistoryManager, error) {
 	sess, err := session.NewSession()
 	if err != nil {
 		return nil, err
@@ -62,7 +62,7 @@ func NewSSMStatePusher(clusterName, serviceName string) (*ssmStatePusher, error)
 		Region: aws.String(region),
 	})
 
-	return &ssmStatePusher{
+	return &ssmHistoryManager{
 		Client:       client,
 		ClusterName:  clusterName,
 		ServiceName:  serviceName,
@@ -70,7 +70,7 @@ func NewSSMStatePusher(clusterName, serviceName string) (*ssmStatePusher, error)
 	}, nil
 }
 
-func (s *ssmStatePusher) Push(v string) error {
+func (s *ssmHistoryManager) Push(v string) error {
 	p := &ssm.PutParameterInput{
 		Name:      aws.String(s.getName()),
 		Type:      aws.String("String"),
@@ -84,7 +84,7 @@ func (s *ssmStatePusher) Push(v string) error {
 	return nil
 }
 
-func (s *ssmStatePusher) PushState(revision int, cause string) error {
+func (s *ssmHistoryManager) PushState(revision int, cause string) error {
 	state, err := s.Pull()
 	if err != nil {
 		return err
@@ -114,7 +114,7 @@ func (s *ssmStatePusher) PushState(revision int, cause string) error {
 	return nil
 }
 
-func (s *ssmStatePusher) UpdateState(revision int) error {
+func (s *ssmHistoryManager) UpdateState(revision int) error {
 	state, err := s.Pull()
 	if err != nil {
 		return err
@@ -140,7 +140,7 @@ func (s *ssmStatePusher) UpdateState(revision int) error {
 	return errors.New("can not found a current state")
 }
 
-func (s *ssmStatePusher) Pull() ([]*deployState, error) {
+func (s *ssmHistoryManager) Pull() ([]*deployState, error) {
 	filter := &ssm.ParametersFilter{
 		Key: aws.String("Name"),
 		Values: []*string{
@@ -189,6 +189,6 @@ func (s *ssmStatePusher) Pull() ([]*deployState, error) {
 	return states, nil
 }
 
-func (s *ssmStatePusher) getName() string {
+func (s *ssmHistoryManager) getName() string {
 	return fmt.Sprintf("deploy-state.%s.%s", s.ClusterName, s.ServiceName)
 }

@@ -64,12 +64,12 @@ func (f *rollbackCmd) execute(_ *cobra.Command, args []string, l *logger) error 
 		Region: aws.String(region),
 	})
 
-	pusher, err := NewStatePusher(f.backend, f.cluster, f.serviceName)
+	historyManager, err := NewHistoryManager(f.backend, f.cluster, f.serviceName)
 	if err != nil {
 		return err
 	}
 
-	states, err := pusher.Pull()
+	states, err := historyManager.Pull()
 	if err != nil {
 		return err
 	}
@@ -107,7 +107,7 @@ func (f *rollbackCmd) execute(_ *cobra.Command, args []string, l *logger) error 
 
 	l.log(fmt.Sprintf("rollback: revision %d -> %d\n", state.Revision, prevState.Revision))
 
-	err = pusher.PushState(
+	err = historyManager.PushState(
 		prevState.Revision,
 		fmt.Sprintf("rollback: %d -> %d", state.Revision, prevState.Revision),
 	)
@@ -127,7 +127,7 @@ func (f *rollbackCmd) execute(_ *cobra.Command, args []string, l *logger) error 
 		return err
 	}
 
-	err = pusher.UpdateState(prevState.Revision)
+	err = historyManager.UpdateState(prevState.Revision)
 	if err != nil {
 		return err
 	}
