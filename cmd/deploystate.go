@@ -11,6 +11,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/ssm"
 )
 
+const defaultHistoryLimit int = 5
+
 type deployStatus int
 
 const (
@@ -39,9 +41,10 @@ func NewStatePusher(backend, clusterName, serviceName string) (statePusher, erro
 }
 
 type ssmStatePusher struct {
-	Client      *ssm.SSM
-	ClusterName string
-	ServiceName string
+	Client       *ssm.SSM
+	ClusterName  string
+	ServiceName  string
+	HistoryLimit int
 }
 
 func NewSSMStatePusher(clusterName, serviceName string) (*ssmStatePusher, error) {
@@ -60,9 +63,10 @@ func NewSSMStatePusher(clusterName, serviceName string) (*ssmStatePusher, error)
 	})
 
 	return &ssmStatePusher{
-		Client:      client,
-		ClusterName: clusterName,
-		ServiceName: serviceName,
+		Client:       client,
+		ClusterName:  clusterName,
+		ServiceName:  serviceName,
+		HistoryLimit: defaultHistoryLimit,
 	}, nil
 }
 
@@ -92,8 +96,8 @@ func (s *ssmStatePusher) PushState(revision int, cause string) error {
 	})
 
 	from := 0
-	if len(state) > 5 {
-		from = len(state) - 5
+	if len(state) > s.HistoryLimit {
+		from = len(state) - s.HistoryLimit
 	}
 
 	state = state[from:]
