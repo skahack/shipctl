@@ -67,6 +67,10 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 		return errors.New("--service-name is required")
 	}
 
+	if len(f.images.Value) == 0 {
+		return errors.New("--image is required")
+	}
+
 	region := getAWSRegion()
 	if region == "" {
 		return errors.New("AWS region is not found. please set a AWS_DEFAULT_REGION or AWS_REGION")
