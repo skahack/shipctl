@@ -1,8 +1,8 @@
-hash: eff6a27f282eb3c0c1a32dbd070f339aefdd20103d9217849ab8666fb241c6ab
-updated: 2017-04-05T16:15:40.000132963+09:00
+hash: 00dc1c973dd00f078786848bb2737243fc871e32dc2331657ce8594e480d5833
+updated: 2017-04-10T14:57:28.310003974+09:00
 imports:
 - name: github.com/aws/aws-sdk-go
-  version: 3a4119172097bf8725eb7c1b96b7957cfe2d92dc
+  version: 200fde3f632bb9f036ec0b8cb29fbc8588155ea5
   subpackages:
   - aws
   - aws/awserr
@@ -29,9 +29,10 @@ imports:
   - private/protocol/xml/xmlutil
   - service/ecr
   - service/ecs
+  - service/ssm
   - service/sts
 - name: github.com/docker/distribution
-  version: 0d39820aa79e678113b010bae558345fda98db53
+  version: a25b9ef0c9fe242ac04bb20d3a028442b7d266b6
   subpackages:
   - digest
   - reference
@@ -46,7 +47,7 @@ imports:
 - name: github.com/oklog/ulid
   version: d311cb43c92434ec4072dfbbda3400741d0a6337
 - name: github.com/spf13/cobra
-  version: 7aeaa2cce6ae7e18d2a6ee597b60ee137e999bd9
+  version: 5deb57bbca49eb370538fc295ba4b2988f9f5e09
 - name: github.com/spf13/pflag
-  version: d16db1e50e33dff1b6cdf37596cef36742128670
+  version: 9a906f17374922ed0f74e1b2f593d3723f2ffb00
 testImports: []
