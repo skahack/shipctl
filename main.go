@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/SKAhack/ship/cmd"
+	"github.com/SKAhack/shipctl/cmd"
 	"github.com/spf13/cobra"
 )
 
@@ -14,14 +14,13 @@ var (
 )
 
 const (
-	cliName        = "ship"
+	cliName        = "shipctl"
 	cliDescription = "deploy tool"
 )
 
 var rootCmd = &cobra.Command{
-	Use:        cliName,
-	Short:      cliDescription,
-	SuggestFor: []string{"ship"},
+	Use:   cliName,
+	Short: cliDescription,
 }
 
 func main() {

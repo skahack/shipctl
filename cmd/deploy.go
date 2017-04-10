@@ -25,12 +25,12 @@ var ECRRegex *regexp.Regexp = func() *regexp.Regexp {
 }()
 
 type deployCmd struct {
-	cluster     string
-	serviceName string
-	revision    int
-	images      imageOptions
-	backend     string
-	slackNotify string
+	cluster         string
+	serviceName     string
+	revision        int
+	images          imageOptions
+	backend         string
+	slackWebhookUrl string
 }
 
 func NewDeployCommand(out, errOut io.Writer) *cobra.Command {
@@ -39,7 +39,7 @@ func NewDeployCommand(out, errOut io.Writer) *cobra.Command {
 		Use:   "deploy [options]",
 		Short: "",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			log := NewLogger(f.cluster, f.serviceName, f.slackNotify, out)
+			log := NewLogger(f.cluster, f.serviceName, f.slackWebhookUrl, out)
 			err := f.execute(cmd, args, log)
 			if err != nil {
 				log.fail(fmt.Sprintf("failed to deploy. cluster: %s, serviceName: %s\n", f.cluster, f.serviceName))
@@ -53,7 +53,7 @@ func NewDeployCommand(out, errOut io.Writer) *cobra.Command {
 	cmd.Flags().IntVar(&f.revision, "revision", 0, "revision of ECS task definition")
 	cmd.Flags().Var(&f.images, "image", "base image of ECR image")
 	cmd.Flags().StringVar(&f.backend, "backend", "SSM", "Backend type of history manager")
-	cmd.Flags().StringVar(&f.slackNotify, "slack-notify", "", "slack webhook URL")
+	cmd.Flags().StringVar(&f.slackWebhookUrl, "slack-webhook-url", "", "slack webhook URL")
 
 	return cmd
 }
@@ -65,6 +65,10 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 
 	if f.serviceName == "" {
 		return errors.New("--service-name is required")
+	}
+
+	if len(f.images.Value) == 0 {
+		return errors.New("--image is required")
 	}
 
 	region := getAWSRegion()
@@ -85,13 +89,18 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 		Region: aws.String(region),
 	})
 
+	historyManager, err := NewHistoryManager(f.backend, f.cluster, f.serviceName)
+	if err != nil {
+		return err
+	}
+
 	service, err := describeService(client, f.cluster, f.serviceName)
 	if err != nil {
 		return err
 	}
 
 	if len(service.Deployments) > 1 {
-		return errors.New(fmt.Sprintf("%s is currently deployed", f.serviceName))
+		return errors.New(fmt.Sprintf("%s is currently deploying", f.serviceName))
 	}
 
 	var uniqueID string
@@ -142,18 +151,6 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 		}
 	}
 
-	pusher, err := NewStatePusher(f.backend, f.cluster, f.serviceName)
-	if err != nil {
-		return err
-	}
-	err = pusher.PushState(
-		int(*registerdTaskDef.Revision),
-		fmt.Sprintf("deploy: %d -> %d", *taskDef.Revision, *registerdTaskDef.Revision),
-	)
-	if err != nil {
-		return err
-	}
-
 	l.log(fmt.Sprintf("task definition registerd successfully: revision %d -> %d\n", *taskDef.Revision, *registerdTaskDef.Revision))
 
 	err = updateService(client, service, registerdTaskDef)
@@ -168,7 +165,10 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 		return err
 	}
 
-	err = pusher.UpdateState(int(*registerdTaskDef.Revision))
+	err = historyManager.PushState(
+		int(*registerdTaskDef.Revision),
+		fmt.Sprintf("deploy: %d -> %d", *taskDef.Revision, *registerdTaskDef.Revision),
+	)
 	if err != nil {
 		return err
 	}

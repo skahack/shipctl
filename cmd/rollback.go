@@ -12,10 +12,10 @@ import (
 )
 
 type rollbackCmd struct {
-	cluster     string
-	serviceName string
-	backend     string
-	slackNotify string
+	cluster         string
+	serviceName     string
+	backend         string
+	slackWebhookUrl string
 }
 
 func NewRollbackCommand(out, errOut io.Writer) *cobra.Command {
@@ -24,7 +24,7 @@ func NewRollbackCommand(out, errOut io.Writer) *cobra.Command {
 		Use:   "rollback [options]",
 		Short: "",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			log := NewLogger(f.cluster, f.serviceName, f.slackNotify, out)
+			log := NewLogger(f.cluster, f.serviceName, f.slackWebhookUrl, out)
 			err := f.execute(cmd, args, log)
 			if err != nil {
 				log.fail(fmt.Sprintf("failed to deploy. cluster: %s, serviceName: %s\n", f.cluster, f.serviceName))
@@ -36,7 +36,7 @@ func NewRollbackCommand(out, errOut io.Writer) *cobra.Command {
 	cmd.Flags().StringVar(&f.cluster, "cluster", "", "ECS Cluster Name")
 	cmd.Flags().StringVar(&f.serviceName, "service-name", "", "ECS Service Name")
 	cmd.Flags().StringVar(&f.backend, "backend", "SSM", "Backend type of state manager")
-	cmd.Flags().StringVar(&f.slackNotify, "slack-notify", "", "slack webhook URL")
+	cmd.Flags().StringVar(&f.slackWebhookUrl, "slack-webhook-url", "", "slack webhook URL")
 
 	return cmd
 }
@@ -64,23 +64,21 @@ func (f *rollbackCmd) execute(_ *cobra.Command, args []string, l *logger) error 
 		Region: aws.String(region),
 	})
 
-	pusher, err := NewStatePusher(f.backend, f.cluster, f.serviceName)
+	historyManager, err := NewHistoryManager(f.backend, f.cluster, f.serviceName)
 	if err != nil {
 		return err
 	}
 
-	states, err := pusher.Pull()
+	states, err := historyManager.Pull()
 	if err != nil {
 		return err
 	}
 	if len(states) < 2 {
 		return errors.New("can not found a prev state")
 	}
+
 	prevState := states[len(states)-2]
 	state := states[len(states)-1]
-	if state.Status != deployStatus_DEPLOYED {
-		return errors.New("found pending deploy")
-	}
 
 	service, err := describeService(client, f.cluster, f.serviceName)
 	if err != nil {
@@ -88,7 +86,7 @@ func (f *rollbackCmd) execute(_ *cobra.Command, args []string, l *logger) error 
 	}
 
 	if len(service.Deployments) > 1 {
-		return errors.New(fmt.Sprintf("%s is currently deployed", f.serviceName))
+		return errors.New(fmt.Sprintf("%s is currently deploying", f.serviceName))
 	}
 
 	var taskDef *ecs.TaskDefinition
@@ -107,14 +105,6 @@ func (f *rollbackCmd) execute(_ *cobra.Command, args []string, l *logger) error 
 
 	l.log(fmt.Sprintf("rollback: revision %d -> %d\n", state.Revision, prevState.Revision))
 
-	err = pusher.PushState(
-		prevState.Revision,
-		fmt.Sprintf("rollback: %d -> %d", state.Revision, prevState.Revision),
-	)
-	if err != nil {
-		return err
-	}
-
 	err = updateService(client, service, taskDef)
 	if err != nil {
 		return err
@@ -127,7 +117,10 @@ func (f *rollbackCmd) execute(_ *cobra.Command, args []string, l *logger) error 
 		return err
 	}
 
-	err = pusher.UpdateState(prevState.Revision)
+	err = historyManager.PushState(
+		prevState.Revision,
+		fmt.Sprintf("rollback: %d -> %d", state.Revision, prevState.Revision),
+	)
 	if err != nil {
 		return err
 	}
