@@ -42,7 +42,9 @@ func NewDeployCommand(out, errOut io.Writer) *cobra.Command {
 			log := NewLogger(f.cluster, f.serviceName, f.slackWebhookUrl, out)
 			err := f.execute(cmd, args, log)
 			if err != nil {
-				log.fail(fmt.Sprintf("failed to deploy. cluster: %s, serviceName: %s\n", f.cluster, f.serviceName))
+				msg := fmt.Sprintf("failed to deploy. cluster: %s, serviceName: %s\n", f.cluster, f.serviceName)
+				log.log(msg)
+				log.slack("danger", msg)
 				return err
 			}
 			return nil
@@ -136,7 +138,7 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 
 			opt := f.images.Get(img.RepositoryName)
 			if opt == nil {
-				return errors.New(fmt.Sprintf("can not found a image option %s", img.RepositoryName))
+				return errors.New(fmt.Sprintf("can not found image option %s", img.RepositoryName))
 			}
 
 			err = tagDockerImage(ecrClient, img.RepositoryName, opt.Tag, uniqueID)
@@ -151,7 +153,10 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 		}
 	}
 
-	l.log(fmt.Sprintf("task definition registerd successfully: revision %d -> %d\n", *taskDef.Revision, *registerdTaskDef.Revision))
+	var msg string
+	msg = fmt.Sprintf("deploy: revision %d -> %d\n", *taskDef.Revision, *registerdTaskDef.Revision)
+	l.log(msg)
+	l.slack("normal", msg)
 
 	err = updateService(client, service, registerdTaskDef)
 	if err != nil {
@@ -173,7 +178,9 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 		return err
 	}
 
-	l.success(fmt.Sprintf("service updated successfully\n"))
+	msg = fmt.Sprintf("successfully updated\n")
+	l.log(msg)
+	l.slack("good", msg)
 
 	return nil
 }

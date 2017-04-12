@@ -27,37 +27,26 @@ func (l *logger) log(message string) {
 	if l.Out != nil {
 		fmt.Fprintf(l.Out, message)
 	}
+}
 
-	if l.SlackWebhookUrl != "" {
+func (l *logger) slack(messageType string, message string) {
+	if l.SlackWebhookUrl == "" {
+		return
+	}
+
+	switch messageType {
+	case "normal":
 		client := &slack.Client{WebhookURL: l.SlackWebhookUrl}
 		payload := &slack.Payload{
 			Username: "deploy-bot",
 			Text:     fmt.Sprintf("cluster: %s, serviceName: %s\n%s", l.Cluster, l.ServiceName, message),
 		}
 		client.Post(payload)
-	}
-}
-
-func (l *logger) logWithType(message string, messageType string) {
-	if messageType == "" {
-		l.log(message)
-		return
-	}
-
-	if l.Out != nil {
-		fmt.Fprintf(l.Out, message)
-	}
-
-	if l.SlackWebhookUrl != "" {
-		color := func() string {
-			if messageType == "danger" {
-				return "danger"
-			}
-			return "good"
-		}()
+	case "good":
+	case "danger":
 		client := &slack.Client{WebhookURL: l.SlackWebhookUrl}
 		attachment := &slack.Attachment{
-			Color: color,
+			Color: messageType,
 			Text:  fmt.Sprintf("cluster: %s, serviceName: %s\n%s", l.Cluster, l.ServiceName, message),
 		}
 		payload := &slack.Payload{
@@ -66,12 +55,4 @@ func (l *logger) logWithType(message string, messageType string) {
 		}
 		client.Post(payload)
 	}
-}
-
-func (l *logger) success(message string) {
-	l.logWithType(message, "good")
-}
-
-func (l *logger) fail(message string) {
-	l.logWithType(message, "danger")
 }
