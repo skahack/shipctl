@@ -17,6 +17,7 @@ type oneshotCmd struct {
 	cluster     string
 	taskDefName string
 	command     []string
+	revision    int
 }
 
 func NewOneshotCommand(out, errOut io.Writer) *cobra.Command {
@@ -36,6 +37,7 @@ func NewOneshotCommand(out, errOut io.Writer) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&f.cluster, "cluster", "", "ECS cluster name")
 	cmd.Flags().StringVar(&f.taskDefName, "taskdef-name", "", "ECS task definition name")
+	cmd.Flags().IntVar(&f.revision, "revision", 0, "revision of ECS task definition")
 
 	return cmd
 }
@@ -72,6 +74,17 @@ func (f *oneshotCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 		return err
 	}
 
+	arn := *taskDef.TaskDefinitionArn
+	arn, err = specifyRevision(f.revision, arn)
+	if err != nil {
+		return err
+	}
+
+	taskDef, err = f.describeTaskDefinition(client, arn)
+	if err != nil {
+		return err
+	}
+
 	task, err := f.runTask(client, taskDef, f.command)
 	if err != nil {
 		return err
@@ -99,6 +112,7 @@ func (f *oneshotCmd) runTask(client *ecs.ECS, taskDef *ecs.TaskDefinition, comma
 	for _, v := range command {
 		commands = append(commands, aws.String(v))
 	}
+
 	params := &ecs.RunTaskInput{
 		Cluster:        aws.String(f.cluster),
 		TaskDefinition: taskDef.TaskDefinitionArn,
