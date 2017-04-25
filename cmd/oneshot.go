@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -145,7 +147,10 @@ func (f *oneshotCmd) runTask(client *ecs.ECS, taskDef *ecs.TaskDefinition, comma
 
 func (f *oneshotCmd) waitTask(client *ecs.ECS, task *ecs.Task, l *logger) (*taskStatus, error) {
 	start := time.Now()
+	sig := make(chan os.Signal)
+	signal.Notify(sig, syscall.SIGINT)
 	t := time.NewTicker(10 * time.Second)
+	s := "running"
 	for {
 		select {
 		case <-t.C:
@@ -155,7 +160,7 @@ func (f *oneshotCmd) waitTask(client *ecs.ECS, task *ecs.Task, l *logger) (*task
 			}
 
 			elapsed := time.Now().Sub(start)
-			l.log(fmt.Sprintf("still running... [%s]\n", (elapsed/time.Second)*time.Second))
+			l.log(fmt.Sprintf("still %s... [%s]\n", s, (elapsed/time.Second)*time.Second))
 
 			if *re.LastStatus == "STOPPED" {
 				status := &taskStatus{
@@ -166,6 +171,10 @@ func (f *oneshotCmd) waitTask(client *ecs.ECS, task *ecs.Task, l *logger) (*task
 				}
 				return status, nil
 			}
+		case <-sig:
+			_ = f.stopTask(client, task)
+			l.log(fmt.Sprintf("send stop signal\n"))
+			s = "stopping"
 		}
 	}
 }
@@ -204,4 +213,19 @@ func (f *oneshotCmd) describeTaskDefinition(client *ecs.ECS, name string) (*ecs.
 	}
 
 	return res.TaskDefinition, nil
+}
+
+func (f *oneshotCmd) stopTask(client *ecs.ECS, task *ecs.Task) error {
+	params := &ecs.StopTaskInput{
+		Cluster: task.ClusterArn,
+		Reason:  aws.String("SIGINT"),
+		Task:    task.TaskArn,
+	}
+
+	_, err := client.StopTask(params)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
