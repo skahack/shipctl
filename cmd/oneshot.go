@@ -148,9 +148,9 @@ func (f *oneshotCmd) runTask(client *ecs.ECS, taskDef *ecs.TaskDefinition, comma
 func (f *oneshotCmd) waitTask(client *ecs.ECS, task *ecs.Task, l *logger) (*taskStatus, error) {
 	start := time.Now()
 	sig := make(chan os.Signal)
-	signal.Notify(sig, syscall.SIGINT)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	t := time.NewTicker(10 * time.Second)
-	s := "running"
+	label := "running"
 	for {
 		select {
 		case <-t.C:
@@ -160,7 +160,7 @@ func (f *oneshotCmd) waitTask(client *ecs.ECS, task *ecs.Task, l *logger) (*task
 			}
 
 			elapsed := time.Now().Sub(start)
-			l.log(fmt.Sprintf("still %s... [%s]\n", s, (elapsed/time.Second)*time.Second))
+			l.log(fmt.Sprintf("still %s... [%s]\n", label, (elapsed/time.Second)*time.Second))
 
 			if *re.LastStatus == "STOPPED" {
 				status := &taskStatus{
@@ -172,9 +172,9 @@ func (f *oneshotCmd) waitTask(client *ecs.ECS, task *ecs.Task, l *logger) (*task
 				return status, nil
 			}
 		case <-sig:
-			_ = f.stopTask(client, task)
+			f.stopTask(client, task)
 			l.log(fmt.Sprintf("send stop signal\n"))
-			s = "stopping"
+			label = "stopping"
 		}
 	}
 }
