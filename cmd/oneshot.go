@@ -18,8 +18,10 @@ import (
 type oneshotCmd struct {
 	cluster     string
 	taskDefName string
+	serviceName string
 	command     []string
 	revision    int
+	shellExec   bool
 }
 
 func NewOneshotCommand(out, errOut io.Writer) *cobra.Command {
@@ -40,17 +42,33 @@ func NewOneshotCommand(out, errOut io.Writer) *cobra.Command {
 	cmd.Flags().StringVar(&f.cluster, "cluster", "", "ECS cluster name")
 	cmd.Flags().StringVar(&f.taskDefName, "taskdef-name", "", "ECS task definition name")
 	cmd.Flags().IntVar(&f.revision, "revision", 0, "revision of ECS task definition")
+	cmd.Flags().StringVar(&f.serviceName, "service-name", "", "ECS service name")
 
 	return cmd
 }
 
+type specifyingTaskDefStrategy int
+
+const (
+	TASK_DEFINITION specifyingTaskDefStrategy = iota
+	SERVICE
+)
+
 func (f *oneshotCmd) execute(_ *cobra.Command, args []string, l *logger) error {
+	strategy := TASK_DEFINITION
+
 	if f.cluster == "" {
 		return errors.New("--cluster is required")
 	}
 
-	if f.taskDefName == "" {
-		return errors.New("--taskdef-name is required")
+	if f.taskDefName == "" && f.serviceName == "" {
+		return errors.New("--taskdef-name or --service-name is required")
+	}
+
+	if f.taskDefName != "" {
+		strategy = TASK_DEFINITION
+	} else {
+		strategy = SERVICE
 	}
 
 	if len(f.command) == 0 {
@@ -71,18 +89,27 @@ func (f *oneshotCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 		Region: aws.String(region),
 	})
 
-	taskDef, err := f.describeTaskDefinition(client, f.taskDefName)
-	if err != nil {
-		return err
+	var arn string
+	if strategy == TASK_DEFINITION {
+		taskDef, err := f.describeTaskDefinition(client, f.taskDefName)
+		if err != nil {
+			return err
+		}
+		arn = *taskDef.TaskDefinitionArn
+	} else {
+		service, err := describeService(client, f.cluster, f.serviceName)
+		if err != nil {
+			return err
+		}
+		arn = *service.TaskDefinition
 	}
 
-	arn := *taskDef.TaskDefinitionArn
 	arn, err = specifyRevision(f.revision, arn)
 	if err != nil {
 		return err
 	}
 
-	taskDef, err = f.describeTaskDefinition(client, arn)
+	taskDef, err := f.describeTaskDefinition(client, arn)
 	if err != nil {
 		return err
 	}
@@ -121,7 +148,7 @@ func (f *oneshotCmd) runTask(client *ecs.ECS, taskDef *ecs.TaskDefinition, comma
 		Overrides: &ecs.TaskOverride{
 			ContainerOverrides: []*ecs.ContainerOverride{
 				{
-					Name:    aws.String(f.taskDefName),
+					Name:    taskDef.ContainerDefinitions[0].Name,
 					Command: commands,
 				},
 			},
