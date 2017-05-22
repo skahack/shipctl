@@ -6,11 +6,13 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"regexp"
 	"syscall"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go/service/ecs"
 	"github.com/spf13/cobra"
 
@@ -122,12 +124,21 @@ func (f *oneshotCmd) execute(_ *cobra.Command, args []string, l *log.Logger) err
 		return err
 	}
 
-	l.Log("task started\n")
+	l.Log("Task started\n")
+	l.Log(fmt.Sprintf("Task ID: %s\n", f.getTaskID(task)))
 
 	status, err := f.waitTask(client, task, l)
 	if err != nil {
 		return err
 	}
+
+	var awslogs *cloudwatchlogs.CloudWatchLogs = nil
+	if f.hasAwslogsConfig(taskDef) {
+		awslogs = cloudwatchlogs.New(sess, &aws.Config{
+			Region: aws.String(region),
+		})
+	}
+	f.outputTaskLogs(awslogs, taskDef, f.getTaskID(task), l)
 
 	os.Exit(status.ExitCode)
 
@@ -245,4 +256,53 @@ func (f *oneshotCmd) stopTask(client *ecs.ECS, task *ecs.Task) error {
 	}
 
 	return nil
+}
+
+func (f *oneshotCmd) getTaskID(task *ecs.Task) string {
+	arn := *task.TaskArn
+	r, _ := regexp.Compile(`task/([0-9a-z-]*)$`)
+	matches := r.FindStringSubmatch(arn)
+	return matches[1]
+}
+
+func (f *oneshotCmd) hasAwslogsConfig(taskDef *ecs.TaskDefinition) bool {
+	logConfig := taskDef.ContainerDefinitions[0].LogConfiguration
+	if logConfig == nil {
+		return false
+	}
+
+	if *logConfig.LogDriver == "awslogs" {
+		options := logConfig.Options
+		if _, ok := options["awslogs-stream-prefix"]; ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (f *oneshotCmd) outputTaskLogs(awslogs *cloudwatchlogs.CloudWatchLogs, taskDef *ecs.TaskDefinition, taskID string, l *log.Logger) {
+	if awslogs == nil {
+		return
+	}
+
+	logConfig := taskDef.ContainerDefinitions[0].LogConfiguration
+	options := logConfig.Options
+
+	params := &cloudwatchlogs.FilterLogEventsInput{
+		LogGroupName: options["awslogs-group"],
+		Interleaved:  aws.Bool(true),
+		LogStreamNames: []*string{
+			aws.String(fmt.Sprintf("%s/%s/%s", *options["awslogs-stream-prefix"], f.serviceName, taskID)),
+		},
+	}
+
+	res, _ := awslogs.FilterLogEvents(params)
+	if res.Events == nil {
+		return
+	}
+
+	for _, v := range res.Events {
+		l.Log(fmt.Sprintf("> %s\n", *v.Message))
+	}
 }
