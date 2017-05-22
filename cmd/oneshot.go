@@ -6,13 +6,18 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"regexp"
 	"syscall"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go/service/ecs"
 	"github.com/spf13/cobra"
+
+	libecs "github.com/SKAhack/shipctl/lib/ecs"
+	log "github.com/SKAhack/shipctl/lib/logger"
 )
 
 type oneshotCmd struct {
@@ -32,10 +37,10 @@ func NewOneshotCommand(out, errOut io.Writer) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			f.command = args
 
-			l := NewLogger(f.cluster, f.taskDefName, "", out)
+			l := log.NewLogger(f.cluster, f.taskDefName, "", out)
 			err := f.execute(cmd, args, l)
 			if err != nil {
-				l.log(fmt.Sprintf("error: %s\n", err.Error()))
+				l.Log(fmt.Sprintf("error: %s\n", err.Error()))
 			}
 		},
 	}
@@ -54,7 +59,7 @@ const (
 	SERVICE
 )
 
-func (f *oneshotCmd) execute(_ *cobra.Command, args []string, l *logger) error {
+func (f *oneshotCmd) execute(_ *cobra.Command, args []string, l *log.Logger) error {
 	strategy := TASK_DEFINITION
 
 	if f.cluster == "" {
@@ -91,25 +96,25 @@ func (f *oneshotCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 
 	var arn string
 	if strategy == TASK_DEFINITION {
-		taskDef, err := f.describeTaskDefinition(client, f.taskDefName)
+		taskDef, err := libecs.DescribeTaskDefinition(client, f.taskDefName)
 		if err != nil {
 			return err
 		}
 		arn = *taskDef.TaskDefinitionArn
 	} else {
-		service, err := describeService(client, f.cluster, f.serviceName)
+		service, err := libecs.DescribeService(client, f.cluster, f.serviceName)
 		if err != nil {
 			return err
 		}
 		arn = *service.TaskDefinition
 	}
 
-	arn, err = specifyRevision(f.revision, arn)
+	arn, err = libecs.SpecifyRevision(f.revision, arn)
 	if err != nil {
 		return err
 	}
 
-	taskDef, err := f.describeTaskDefinition(client, arn)
+	taskDef, err := libecs.DescribeTaskDefinition(client, arn)
 	if err != nil {
 		return err
 	}
@@ -119,12 +124,21 @@ func (f *oneshotCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 		return err
 	}
 
-	l.log("task started\n")
+	l.Log("Task started\n")
+	l.Log(fmt.Sprintf("Task ID: %s\n", f.getTaskID(task)))
 
 	status, err := f.waitTask(client, task, l)
 	if err != nil {
 		return err
 	}
+
+	var awslogs *cloudwatchlogs.CloudWatchLogs = nil
+	if f.hasAwslogsConfig(taskDef) {
+		awslogs = cloudwatchlogs.New(sess, &aws.Config{
+			Region: aws.String(region),
+		})
+	}
+	f.outputTaskLogs(awslogs, taskDef, f.getTaskID(task), l)
 
 	os.Exit(status.ExitCode)
 
@@ -172,7 +186,7 @@ func (f *oneshotCmd) runTask(client *ecs.ECS, taskDef *ecs.TaskDefinition, comma
 	return res.Tasks[0], nil
 }
 
-func (f *oneshotCmd) waitTask(client *ecs.ECS, task *ecs.Task, l *logger) (*taskStatus, error) {
+func (f *oneshotCmd) waitTask(client *ecs.ECS, task *ecs.Task, l *log.Logger) (*taskStatus, error) {
 	start := time.Now()
 	sig := make(chan os.Signal)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
@@ -187,7 +201,7 @@ func (f *oneshotCmd) waitTask(client *ecs.ECS, task *ecs.Task, l *logger) (*task
 			}
 
 			elapsed := time.Now().Sub(start)
-			l.log(fmt.Sprintf("still %s... [%s]\n", label, (elapsed/time.Second)*time.Second))
+			l.Log(fmt.Sprintf("still %s... [%s]\n", label, (elapsed/time.Second)*time.Second))
 
 			if *re.LastStatus == "STOPPED" {
 				status := &taskStatus{
@@ -200,7 +214,7 @@ func (f *oneshotCmd) waitTask(client *ecs.ECS, task *ecs.Task, l *logger) (*task
 			}
 		case <-sig:
 			f.stopTask(client, task)
-			l.log(fmt.Sprintf("send stop signal\n"))
+			l.Log(fmt.Sprintf("send stop signal\n"))
 			label = "stopping"
 		}
 	}
@@ -229,19 +243,6 @@ func (f *oneshotCmd) describeTask(client *ecs.ECS, task *ecs.Task) (*ecs.Task, e
 	return res.Tasks[0], nil
 }
 
-func (f *oneshotCmd) describeTaskDefinition(client *ecs.ECS, name string) (*ecs.TaskDefinition, error) {
-	params := &ecs.DescribeTaskDefinitionInput{
-		TaskDefinition: aws.String(name),
-	}
-
-	res, err := client.DescribeTaskDefinition(params)
-	if err != nil {
-		return nil, err
-	}
-
-	return res.TaskDefinition, nil
-}
-
 func (f *oneshotCmd) stopTask(client *ecs.ECS, task *ecs.Task) error {
 	params := &ecs.StopTaskInput{
 		Cluster: task.ClusterArn,
@@ -255,4 +256,53 @@ func (f *oneshotCmd) stopTask(client *ecs.ECS, task *ecs.Task) error {
 	}
 
 	return nil
+}
+
+func (f *oneshotCmd) getTaskID(task *ecs.Task) string {
+	arn := *task.TaskArn
+	r, _ := regexp.Compile(`task/([0-9a-z-]*)$`)
+	matches := r.FindStringSubmatch(arn)
+	return matches[1]
+}
+
+func (f *oneshotCmd) hasAwslogsConfig(taskDef *ecs.TaskDefinition) bool {
+	logConfig := taskDef.ContainerDefinitions[0].LogConfiguration
+	if logConfig == nil {
+		return false
+	}
+
+	if *logConfig.LogDriver == "awslogs" {
+		options := logConfig.Options
+		if _, ok := options["awslogs-stream-prefix"]; ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (f *oneshotCmd) outputTaskLogs(awslogs *cloudwatchlogs.CloudWatchLogs, taskDef *ecs.TaskDefinition, taskID string, l *log.Logger) {
+	if awslogs == nil {
+		return
+	}
+
+	logConfig := taskDef.ContainerDefinitions[0].LogConfiguration
+	options := logConfig.Options
+
+	params := &cloudwatchlogs.FilterLogEventsInput{
+		LogGroupName: options["awslogs-group"],
+		Interleaved:  aws.Bool(true),
+		LogStreamNames: []*string{
+			aws.String(fmt.Sprintf("%s/%s/%s", *options["awslogs-stream-prefix"], f.serviceName, taskID)),
+		},
+	}
+
+	res, _ := awslogs.FilterLogEvents(params)
+	if res.Events == nil {
+		return
+	}
+
+	for _, v := range res.Events {
+		l.Log(fmt.Sprintf("> %s\n", *v.Message))
+	}
 }

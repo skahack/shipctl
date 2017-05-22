@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
-	"os"
 	"regexp"
 	"time"
 
@@ -17,6 +16,9 @@ import (
 	"github.com/docker/distribution/reference"
 	"github.com/oklog/ulid"
 	"github.com/spf13/cobra"
+
+	libecs "github.com/SKAhack/shipctl/lib/ecs"
+	log "github.com/SKAhack/shipctl/lib/logger"
 )
 
 var ECRRegex *regexp.Regexp = func() *regexp.Regexp {
@@ -39,12 +41,12 @@ func NewDeployCommand(out, errOut io.Writer) *cobra.Command {
 		Use:   "deploy [options]",
 		Short: "",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			log := NewLogger(f.cluster, f.serviceName, f.slackWebhookUrl, out)
-			err := f.execute(cmd, args, log)
+			l := log.NewLogger(f.cluster, f.serviceName, f.slackWebhookUrl, out)
+			err := f.execute(cmd, args, l)
 			if err != nil {
 				msg := fmt.Sprintf("failed to deploy. cluster: %s, serviceName: %s\n", f.cluster, f.serviceName)
-				log.log(msg)
-				log.slack("danger", msg)
+				l.Log(msg)
+				l.Slack("danger", msg)
 				return err
 			}
 			return nil
@@ -60,7 +62,7 @@ func NewDeployCommand(out, errOut io.Writer) *cobra.Command {
 	return cmd
 }
 
-func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
+func (f *deployCmd) execute(_ *cobra.Command, args []string, l *log.Logger) error {
 	if f.cluster == "" {
 		return errors.New("--cluster is required")
 	}
@@ -96,7 +98,7 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 		return err
 	}
 
-	service, err := describeService(client, f.cluster, f.serviceName)
+	service, err := libecs.DescribeService(client, f.cluster, f.serviceName)
 	if err != nil {
 		return err
 	}
@@ -115,23 +117,23 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 	var registerdTaskDef *ecs.TaskDefinition
 	{
 		taskDefArn := *service.TaskDefinition
-		taskDefArn, err = specifyRevision(f.revision, taskDefArn)
+		taskDefArn, err = libecs.SpecifyRevision(f.revision, taskDefArn)
 		if err != nil {
 			return err
 		}
 
-		taskDef, err = describeTaskDefinition(client, taskDefArn)
+		taskDef, err = libecs.DescribeTaskDefinition(client, taskDefArn)
 		if err != nil {
 			return err
 		}
 
-		newTaskDef, err := createNewTaskDefinition(uniqueID, taskDef)
+		newTaskDef, err := f.createNewTaskDefinition(uniqueID, taskDef)
 		if err != nil {
 			return err
 		}
 
 		for _, v := range taskDef.ContainerDefinitions {
-			img, err := parseDockerImage(*v.Image)
+			img, err := f.parseDockerImage(*v.Image)
 			if err != nil {
 				return err
 			}
@@ -141,13 +143,13 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 				return errors.New(fmt.Sprintf("can not found image option %s", img.RepositoryName))
 			}
 
-			err = tagDockerImage(ecrClient, img.RepositoryName, opt.Tag, uniqueID)
+			err = f.tagDockerImage(ecrClient, img.RepositoryName, opt.Tag, uniqueID)
 			if err != nil {
 				return err
 			}
 		}
 
-		registerdTaskDef, err = registerTaskDefinition(client, newTaskDef)
+		registerdTaskDef, err = f.registerTaskDefinition(client, newTaskDef)
 		if err != nil {
 			return err
 		}
@@ -155,17 +157,17 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 
 	var msg string
 	msg = fmt.Sprintf("deploy: revision %d -> %d\n", *taskDef.Revision, *registerdTaskDef.Revision)
-	l.log(msg)
-	l.slack("normal", msg)
+	l.Log(msg)
+	l.Slack("normal", msg)
 
-	err = updateService(client, service, registerdTaskDef)
+	err = libecs.UpdateService(client, service, registerdTaskDef)
 	if err != nil {
 		return err
 	}
 
-	l.log(fmt.Sprintf("service updating\n"))
+	l.Log(fmt.Sprintf("service updating\n"))
 
-	err = waitUpdateService(client, f.cluster, f.serviceName, l)
+	err = libecs.WaitUpdateService(client, f.cluster, f.serviceName, l)
 	if err != nil {
 		return err
 	}
@@ -179,54 +181,23 @@ func (f *deployCmd) execute(_ *cobra.Command, args []string, l *logger) error {
 	}
 
 	msg = fmt.Sprintf("successfully updated\n")
-	l.log(msg)
-	l.slack("good", msg)
+	l.Log(msg)
+	l.Slack("good", msg)
 
 	return nil
 }
 
-func describeService(client *ecs.ECS, cluster, serviceName string) (*ecs.Service, error) {
-	params := &ecs.DescribeServicesInput{
-		Services: []*string{aws.String(serviceName)},
-		Cluster:  aws.String(cluster),
-	}
-
-	res, err := client.DescribeServices(params)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(res.Services) == 0 {
-		return nil, errors.New("service is not found")
-	}
-
-	return res.Services[0], nil
-}
-
-func describeTaskDefinition(client *ecs.ECS, arn string) (*ecs.TaskDefinition, error) {
-	params := &ecs.DescribeTaskDefinitionInput{
-		TaskDefinition: aws.String(arn),
-	}
-
-	res, err := client.DescribeTaskDefinition(params)
-	if err != nil {
-		return nil, err
-	}
-
-	return res.TaskDefinition, nil
-}
-
-func createNewTaskDefinition(id string, taskDef *ecs.TaskDefinition) (*ecs.TaskDefinition, error) {
+func (f *deployCmd) createNewTaskDefinition(id string, taskDef *ecs.TaskDefinition) (*ecs.TaskDefinition, error) {
 	newTaskDef := *taskDef // shallow copy
 	var containers []*ecs.ContainerDefinition
 	for _, vp := range taskDef.ContainerDefinitions {
 		v := *vp // shallow copy
-		img, err := parseDockerImage(*v.Image)
+		img, err := f.parseDockerImage(*v.Image)
 		if err != nil {
 			return nil, err
 		}
 
-		if isECRHosted(img) {
+		if f.isECRHosted(img) {
 			v.Image = aws.String(fmt.Sprintf("%s:%s", img.Name, id))
 			containers = append(containers, &v)
 		}
@@ -243,7 +214,7 @@ type dockerImage struct {
 	HostName       string
 }
 
-func parseDockerImage(image string) (*dockerImage, error) {
+func (f *deployCmd) parseDockerImage(image string) (*dockerImage, error) {
 	ref, err := reference.Parse(image)
 	if err != nil {
 		return nil, err
@@ -258,11 +229,11 @@ func parseDockerImage(image string) (*dockerImage, error) {
 	}, nil
 }
 
-func isECRHosted(image *dockerImage) bool {
+func (f *deployCmd) isECRHosted(image *dockerImage) bool {
 	return ECRRegex.MatchString(image.HostName)
 }
 
-func registerTaskDefinition(client *ecs.ECS, taskDef *ecs.TaskDefinition) (*ecs.TaskDefinition, error) {
+func (f *deployCmd) registerTaskDefinition(client *ecs.ECS, taskDef *ecs.TaskDefinition) (*ecs.TaskDefinition, error) {
 	params := &ecs.RegisterTaskDefinitionInput{
 		ContainerDefinitions: taskDef.ContainerDefinitions,
 		Family:               taskDef.Family,
@@ -280,58 +251,7 @@ func registerTaskDefinition(client *ecs.ECS, taskDef *ecs.TaskDefinition) (*ecs.
 	return res.TaskDefinition, nil
 }
 
-func updateService(client *ecs.ECS, service *ecs.Service, taskDef *ecs.TaskDefinition) error {
-	params := &ecs.UpdateServiceInput{
-		Cluster:                 service.ClusterArn,
-		DeploymentConfiguration: service.DeploymentConfiguration,
-		DesiredCount:            service.DesiredCount,
-		Service:                 service.ServiceName,
-		TaskDefinition:          taskDef.TaskDefinitionArn,
-	}
-
-	_, err := client.UpdateService(params)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func waitUpdateService(client *ecs.ECS, cluster, serviceName string, l *logger) error {
-	start := time.Now()
-	t := time.NewTicker(10 * time.Second)
-	for {
-		select {
-		case <-t.C:
-			s, err := describeService(client, cluster, serviceName)
-			if err != nil {
-				return err
-			}
-
-			elapsed := time.Now().Sub(start)
-			l.log(fmt.Sprintf("still service updating... [%s]\n", (elapsed/time.Second)*time.Second))
-
-			if len(s.Deployments) == 1 && *s.RunningCount == *s.DesiredCount {
-				return nil
-			}
-		}
-	}
-}
-
-func specifyRevision(revision int, arn string) (string, error) {
-	if revision <= 0 {
-		return arn, nil
-	}
-
-	re, err := regexp.Compile(`(.*):[1-9][0-9]*$`)
-	if err != nil {
-		return "", err
-	}
-
-	return re.ReplaceAllString(arn, fmt.Sprintf("${1}:%d", revision)), nil
-}
-
-func tagDockerImage(ecrClient *ecr.ECR, repoName string, fromTag string, toTag string) error {
+func (f *deployCmd) tagDockerImage(ecrClient *ecr.ECR, repoName string, fromTag string, toTag string) error {
 	params := &ecr.BatchGetImageInput{
 		ImageIds:       []*ecr.ImageIdentifier{{ImageTag: aws.String(fromTag)}},
 		RepositoryName: aws.String(repoName),
@@ -358,18 +278,6 @@ func tagDockerImage(ecrClient *ecr.ECR, repoName string, fromTag string, toTag s
 	}
 
 	return nil
-}
-
-func getAWSRegion() string {
-	if os.Getenv("AWS_REGION") != "" {
-		return os.Getenv("AWS_REGION")
-	}
-
-	if os.Getenv("AWS_DEFAULT_REGION") != "" {
-		return os.Getenv("AWS_DEFAULT_REGION")
-	}
-
-	return ""
 }
 
 //
