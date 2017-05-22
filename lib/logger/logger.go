@@ -1,4 +1,4 @@
-package cmd
+package logger
 
 import (
 	"fmt"
@@ -7,15 +7,15 @@ import (
 	slack "github.com/monochromegane/slack-incoming-webhooks"
 )
 
-type logger struct {
+type Logger struct {
 	Cluster         string
 	ServiceName     string
 	Out             io.Writer
 	SlackWebhookUrl string
 }
 
-func NewLogger(cluster, serviceName, slackWebhookUrl string, out io.Writer) *logger {
-	return &logger{
+func NewLogger(cluster, serviceName, slackWebhookUrl string, out io.Writer) *Logger {
+	return &Logger{
 		Cluster:         cluster,
 		ServiceName:     serviceName,
 		SlackWebhookUrl: slackWebhookUrl,
@@ -23,13 +23,13 @@ func NewLogger(cluster, serviceName, slackWebhookUrl string, out io.Writer) *log
 	}
 }
 
-func (l *logger) log(message string) {
+func (l *Logger) Log(message string) {
 	if l.Out != nil {
 		fmt.Fprintf(l.Out, message)
 	}
 }
 
-func (l *logger) slack(messageType string, message string) {
+func (l *Logger) Slack(messageType string, message string) {
 	if l.SlackWebhookUrl == "" {
 		return
 	}

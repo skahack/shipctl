@@ -9,6 +9,9 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ecs"
 	"github.com/spf13/cobra"
+
+	libecs "github.com/SKAhack/shipctl/lib/ecs"
+	log "github.com/SKAhack/shipctl/lib/logger"
 )
 
 type rollbackCmd struct {
@@ -24,12 +27,12 @@ func NewRollbackCommand(out, errOut io.Writer) *cobra.Command {
 		Use:   "rollback [options]",
 		Short: "",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			log := NewLogger(f.cluster, f.serviceName, f.slackWebhookUrl, out)
-			err := f.execute(cmd, args, log)
+			l := log.NewLogger(f.cluster, f.serviceName, f.slackWebhookUrl, out)
+			err := f.execute(cmd, args, l)
 			if err != nil {
 				msg := fmt.Sprintf("failed to deploy. cluster: %s, serviceName: %s\n", f.cluster, f.serviceName)
-				log.log(msg)
-				log.slack("danger", msg)
+				l.Log(msg)
+				l.Slack("danger", msg)
 				return err
 			}
 			return nil
@@ -43,7 +46,7 @@ func NewRollbackCommand(out, errOut io.Writer) *cobra.Command {
 	return cmd
 }
 
-func (f *rollbackCmd) execute(_ *cobra.Command, args []string, l *logger) error {
+func (f *rollbackCmd) execute(_ *cobra.Command, args []string, l *log.Logger) error {
 	if f.cluster == "" {
 		return errors.New("--cluster is required")
 	}
@@ -82,7 +85,7 @@ func (f *rollbackCmd) execute(_ *cobra.Command, args []string, l *logger) error 
 	prevState := states[len(states)-2]
 	state := states[len(states)-1]
 
-	service, err := describeService(client, f.cluster, f.serviceName)
+	service, err := libecs.DescribeService(client, f.cluster, f.serviceName)
 	if err != nil {
 		return err
 	}
@@ -94,12 +97,12 @@ func (f *rollbackCmd) execute(_ *cobra.Command, args []string, l *logger) error 
 	var taskDef *ecs.TaskDefinition
 	{
 		taskDefArn := *service.TaskDefinition
-		taskDefArn, err = specifyRevision(prevState.Revision, taskDefArn)
+		taskDefArn, err = libecs.SpecifyRevision(prevState.Revision, taskDefArn)
 		if err != nil {
 			return err
 		}
 
-		taskDef, err = describeTaskDefinition(client, taskDefArn)
+		taskDef, err = libecs.DescribeTaskDefinition(client, taskDefArn)
 		if err != nil {
 			return err
 		}
@@ -107,17 +110,17 @@ func (f *rollbackCmd) execute(_ *cobra.Command, args []string, l *logger) error 
 
 	var msg string
 	msg = fmt.Sprintf("rollback: revision %d -> %d\n", state.Revision, prevState.Revision)
-	l.log(msg)
-	l.slack("normal", msg)
+	l.Log(msg)
+	l.Slack("normal", msg)
 
-	err = updateService(client, service, taskDef)
+	err = libecs.UpdateService(client, service, taskDef)
 	if err != nil {
 		return err
 	}
 
-	l.log(fmt.Sprintf("service updating\n"))
+	l.Log(fmt.Sprintf("service updating\n"))
 
-	err = waitUpdateService(client, f.cluster, f.serviceName, l)
+	err = libecs.WaitUpdateService(client, f.cluster, f.serviceName, l)
 	if err != nil {
 		return err
 	}
@@ -131,8 +134,8 @@ func (f *rollbackCmd) execute(_ *cobra.Command, args []string, l *logger) error 
 	}
 
 	msg = fmt.Sprintf("successfully updated\n")
-	l.log(msg)
-	l.slack("good", msg)
+	l.Log(msg)
+	l.Slack("good", msg)
 
 	return nil
 }
