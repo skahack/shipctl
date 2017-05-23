@@ -2,8 +2,9 @@ NAME     := shipctl
 VERSION  := v0.3.0
 REVISION := $(shell git rev-parse --short HEAD)
 
-SRCS    := $(shell find . -type f -name '*.go')
-LDFLAGS := -ldflags="-s -w -X \"main.Version=$(VERSION)\" -X \"main.Revision=$(REVISION)\" -extldflags \"-static\""
+SRCS      := $(shell find . -type f -name '*.go')
+LDFLAGS   := -ldflags="-s -w -X \"main.Version=$(VERSION)\" -X \"main.Revision=$(REVISION)\" -extldflags \"-static\""
+DIST_DIRS := find * -type d -exec
 
 bin/$(NAME): $(SRCS)
 	@go build -a -tags netgo -installsuffix netgo $(LDFLAGS) -o bin/$(NAME)
@@ -22,19 +23,25 @@ clean:
 	rm -rf vendor/*
 	rm -rf dist
 
-DIST_DIRS := find ./ -type d -exec
+.PHONY: build-all
+build-all:
+	gox -verbose \
+	$(LDFLAGS) \
+	-os="linux darwin" \
+	-arch="amd64 386 armv5 armv6 armv7 arm64" \
+	-osarch="!darwin/arm64" \
+	-output="dist/{{.OS}}-{{.Arch}}/{{.Dir}}" .
+
 .PHONY: dist
-dist: bin/${NAME}
+dist: build-all
 	mkdir -p dist
-	cd bin && \
-	$(DIST_DIRS) tar -zcf ../dist/$(NAME)-$(VERSION).tar.gz {} \; && \
-	$(DIST_DIRS) zip -r ../dist/$(NAME)-$(VERSION).zip {} \; && \
+	cd dist && \
+	$(DIST_DIRS) cp ../LICENSE {} \; && \
+	$(DIST_DIRS) cp ../README.md {} \; && \
+	$(DIST_DIRS) tar -zcf $(NAME)-$(VERSION)-{}.tar.gz {} \; && \
+	$(DIST_DIRS) zip -r $(NAME)-$(VERSION)-{}.zip {} \; && \
 	cd ..
 
 .PHONY: test
 test:
 	@go test $$(go list ./... | grep -v '/vendor/') -cover
-
-.PHONY: linux-bin
-linux-bin:
-	docker run -it --rm -v$(CURDIR)/bin:/data $(NAME) cp /go/src/github.com/SKAhack/$(NAME)/bin/$(NAME) /data
