@@ -47,7 +47,7 @@ Example:
 
 ### shipctl oneshot
 
-Run a specified task on the cluster for one-time job, Inspired by (hako)[https://github.com/eagletmt/hako].
+Run a specified task on the cluster for one-time job, Inspired by [hako](https://github.com/eagletmt/hako).
 
 ```
 $ shipctl oneshot [flags] COMMAND
