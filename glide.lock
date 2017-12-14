@@ -1,8 +1,8 @@
-hash: 00dc1c973dd00f078786848bb2737243fc871e32dc2331657ce8594e480d5833
-updated: 2017-04-10T14:57:28.310003974+09:00
+hash: 2297dbe2ccdb339a8d1fff131882a031f2576c201e7b9c096efd94fd5cbf14cd
+updated: 2017-12-14T15:32:36.827773962+09:00
 imports:
 - name: github.com/aws/aws-sdk-go
-  version: 200fde3f632bb9f036ec0b8cb29fbc8588155ea5
+  version: 25ef42b41b82230caae56ab23d872c81fb5c0eae
   subpackages:
   - aws
   - aws/awserr
@@ -20,6 +20,7 @@ imports:
   - aws/request
   - aws/session
   - aws/signer/v4
+  - internal/shareddefaults
   - private/protocol
   - private/protocol/json/jsonutil
   - private/protocol/jsonrpc
@@ -27,12 +28,13 @@ imports:
   - private/protocol/query/queryutil
   - private/protocol/rest
   - private/protocol/xml/xmlutil
+  - service/cloudwatchlogs
   - service/ecr
   - service/ecs
   - service/ssm
   - service/sts
 - name: github.com/docker/distribution
-  version: a25b9ef0c9fe242ac04bb20d3a028442b7d266b6
+  version: 48294d928ced5dd9b378f7fd7c6f5da3ff3f2c89
   subpackages:
   - digest
   - reference
