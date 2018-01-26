@@ -34,14 +34,16 @@ func NewOneshotCommand(out, errOut io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "oneshot [options] COMMAND",
 		Short: "",
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			f.command = args
 
 			l := log.NewLogger(f.cluster, f.taskDefName, "", out)
 			err := f.execute(cmd, args, l)
 			if err != nil {
 				l.Log(fmt.Sprintf("error: %s\n", err.Error()))
+				return err
 			}
+			return nil
 		},
 	}
 	cmd.Flags().StringVar(&f.cluster, "cluster", "", "ECS cluster name")
