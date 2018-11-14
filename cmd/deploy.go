@@ -235,12 +235,16 @@ func (f *deployCmd) isECRHosted(image *dockerImage) bool {
 
 func (f *deployCmd) registerTaskDefinition(client *ecs.ECS, taskDef *ecs.TaskDefinition) (*ecs.TaskDefinition, error) {
 	params := &ecs.RegisterTaskDefinitionInput{
-		ContainerDefinitions: taskDef.ContainerDefinitions,
-		Family:               taskDef.Family,
-		NetworkMode:          taskDef.NetworkMode,
-		PlacementConstraints: taskDef.PlacementConstraints,
-		TaskRoleArn:          taskDef.TaskRoleArn,
-		Volumes:              taskDef.Volumes,
+		ContainerDefinitions:    taskDef.ContainerDefinitions,
+		Cpu:                     taskDef.Cpu,
+		ExecutionRoleArn:        taskDef.ExecutionRoleArn,
+		Family:                  taskDef.Family,
+		Memory:                  taskDef.Memory,
+		NetworkMode:             taskDef.NetworkMode,
+		PlacementConstraints:    taskDef.PlacementConstraints,
+		TaskRoleArn:             taskDef.TaskRoleArn,
+		Volumes:                 taskDef.Volumes,
+		RequiresCompatibilities: taskDef.RequiresCompatibilities,
 	}
 
 	res, err := client.RegisterTaskDefinition(params)
