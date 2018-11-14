@@ -1,8 +1,8 @@
-hash: 2297dbe2ccdb339a8d1fff131882a031f2576c201e7b9c096efd94fd5cbf14cd
-updated: 2017-12-14T15:32:36.827773962+09:00
+hash: 53fd8fe2250e2deb738cb8a824dfe03b19a23d19cc4d74a0ecceef0dfbd76a3b
+updated: 2018-11-14T15:06:47.568390827+09:00
 imports:
 - name: github.com/aws/aws-sdk-go
-  version: 25ef42b41b82230caae56ab23d872c81fb5c0eae
+  version: ab1e4ad20b12ab0df8a825805de3e48ad6c59d28
   subpackages:
   - aws
   - aws/awserr
@@ -14,12 +14,17 @@ imports:
   - aws/credentials/ec2rolecreds
   - aws/credentials/endpointcreds
   - aws/credentials/stscreds
+  - aws/csm
   - aws/defaults
   - aws/ec2metadata
   - aws/endpoints
   - aws/request
   - aws/session
   - aws/signer/v4
+  - internal/ini
+  - internal/sdkio
+  - internal/sdkrand
+  - internal/sdkuri
   - internal/shareddefaults
   - private/protocol
   - private/protocol/json/jsonutil
@@ -34,22 +39,22 @@ imports:
   - service/ssm
   - service/sts
 - name: github.com/docker/distribution
-  version: 48294d928ced5dd9b378f7fd7c6f5da3ff3f2c89
+  version: 17b3ff188dfde7d5b59a94ab99e6a967b3a59563
   subpackages:
-  - digest
+  - digestset
   - reference
-- name: github.com/go-ini/ini
-  version: e7fea39b01aea8d5671f6858f0532f56e8bff3a5
 - name: github.com/inconshreveable/mousetrap
   version: 76626ae9c91c4f2a10f34cad8ce83ea42c93bb75
 - name: github.com/jmespath/go-jmespath
-  version: bd40a432e4c76585ef6b72d3fd96fb9b6dc7b68d
+  version: c2b33e8439af944379acbdd9c3a5fe0bc44bd8a5
 - name: github.com/monochromegane/slack-incoming-webhooks
   version: 86d1b9ab9a9450c03e86cbe9ee2d0f1bb2de3bbf
 - name: github.com/oklog/ulid
   version: d311cb43c92434ec4072dfbbda3400741d0a6337
+- name: github.com/opencontainers/go-digest
+  version: c9281466c8b2f606084ac71339773efd177436e7
 - name: github.com/spf13/cobra
-  version: 5deb57bbca49eb370538fc295ba4b2988f9f5e09
+  version: fe5e611709b0c57fa4a89136deaa8e1d4004d053
 - name: github.com/spf13/pflag
-  version: 9a906f17374922ed0f74e1b2f593d3723f2ffb00
+  version: aea12ed6721610dc6ed40141676d7ab0a1dac9e9
 testImports: []
